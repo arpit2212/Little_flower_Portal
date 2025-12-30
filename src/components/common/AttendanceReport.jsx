@@ -33,7 +33,7 @@ const AttendanceReport = ({ role }) => {
         setClasses(data || []);
         if (data && data.length > 0) {
           setSelectedClass(data[0].id);
-          setClassName(`${data[0].name} ${data[0].section || ''}`);
+          setClassName(`${data[0].name} ${data[0].session || ''}`);
         }
       } else {
         const { data } = await supabase
@@ -44,7 +44,7 @@ const AttendanceReport = ({ role }) => {
         setClasses(data || []);
         if (data && data.length > 0) {
           setSelectedClass(data[0].id);
-          setClassName(`${data[0].name} ${data[0].section || ''}`);
+          setClassName(`${data[0].name} ${data[0].session || ''}`);
         }
       }
     } catch (error) {
@@ -62,7 +62,7 @@ const AttendanceReport = ({ role }) => {
 
     try {
       const selectedClassData = classes.find(c => c.id === selectedClass);
-      setClassName(`${selectedClassData.name} ${selectedClassData.section || ''}`);
+      setClassName(`${selectedClassData.name} ${selectedClassData.session || ''}`);
 
       const { data: students } = await supabase
         .from('students')
@@ -383,13 +383,13 @@ const AttendanceReport = ({ role }) => {
               onChange={(e) => {
                 setSelectedClass(e.target.value);
                 const cls = classes.find(c => c.id === e.target.value);
-                setClassName(`${cls.name} ${cls.section || ''}`);
+                setClassName(`${cls.name} ${cls.session || ''}`);
               }}
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
             >
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>
-                  {cls.name} {cls.section && `- ${cls.section}`}
+                  {cls.name} {cls.session && `- ${cls.session}`}
                 </option>
               ))}
             </select>

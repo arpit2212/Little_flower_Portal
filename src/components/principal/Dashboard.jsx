@@ -46,7 +46,7 @@ const Dashboard = () => {
 
       const { data: classes } = await supabase
         .from('classes')
-        .select('id, name, section');
+        .select('id, name, session');
 
       const classStats = await Promise.all(
         (classes || []).map(async (cls) => {
@@ -56,7 +56,7 @@ const Dashboard = () => {
             .eq('class_id', cls.id);
 
           return {
-            name: `${cls.name} ${cls.section || ''}`.trim(),
+            name: `${cls.name} ${cls.session || ''}`.trim(),
             students: count || 0
           };
         })

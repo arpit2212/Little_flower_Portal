@@ -203,7 +203,7 @@ const AttendanceMarking = () => {
             >
               {myClasses.map((cls) => (
                 <option key={cls.id} value={cls.id}>
-                  {cls.name} {cls.section && `- ${cls.section}`}
+                  {cls.name} {cls.session && `- ${cls.session}`}
                 </option>
               ))}
             </select>

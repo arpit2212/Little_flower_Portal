@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { CLASSES, SECTIONS } from '../../lib/constants';
+import { CLASSES, SESSIONS } from '../../lib/constants';
 import { UserPlus, Trash2, Edit2, Check, X } from 'lucide-react';
 
 const AssignTeacher = () => {
@@ -11,7 +11,7 @@ const AssignTeacher = () => {
   const [editingClass, setEditingClass] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    section: '',
+    session: '',
     teacher_id: ''
   });
 
@@ -49,7 +49,7 @@ const AssignTeacher = () => {
           .from('classes')
           .update({
             name: formData.name,
-            section: formData.section,
+            session: formData.session,
             teacher_id: formData.teacher_id || null
           })
           .eq('id', editingClass.id);
@@ -60,14 +60,14 @@ const AssignTeacher = () => {
           .from('classes')
           .insert([{
             name: formData.name,
-            section: formData.section,
+            session: formData.session,
             teacher_id: formData.teacher_id || null
           }]);
 
         if (error) throw error;
       }
 
-      setFormData({ name: '', section: '', teacher_id: '' });
+      setFormData({ name: '', session: '', teacher_id: '' });
       setShowForm(false);
       setEditingClass(null);
       fetchData();
@@ -81,7 +81,7 @@ const AssignTeacher = () => {
     setEditingClass(cls);
     setFormData({
       name: cls.name,
-      section: cls.section || '',
+      session: cls.session || '',
       teacher_id: cls.teacher_id || ''
     });
     setShowForm(true);
@@ -127,7 +127,7 @@ const AssignTeacher = () => {
           onClick={() => {
             setShowForm(!showForm);
             setEditingClass(null);
-            setFormData({ name: '', section: '', teacher_id: '' });
+            setFormData({ name: '', session: '', teacher_id: '' });
           }}
           className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg"
         >
@@ -166,12 +166,12 @@ const AssignTeacher = () => {
                   Session
                 </label>
                 <select
-                  value={formData.section}
-                  onChange={(e) => setFormData({ ...formData, section: e.target.value })}
+                  value={formData.session}
+                  onChange={(e) => setFormData({ ...formData, session: e.target.value })}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
                 >
                   <option value="">Select Session</option>
-                  {SECTIONS.map((sec) => (
+                  {SESSIONS.map((sec) => (
                     <option key={sec} value={sec}>{sec}</option>
                   ))}
                 </select>
@@ -202,7 +202,7 @@ const AssignTeacher = () => {
                 onClick={() => {
                   setShowForm(false);
                   setEditingClass(null);
-                  setFormData({ name: '', section: '', teacher_id: '' });
+                  setFormData({ name: '', session: '', teacher_id: '' });
                 }}
                 className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
               >
@@ -262,7 +262,7 @@ const AssignTeacher = () => {
                       </div>
                     </td>
                     <td className="px-4 sm:px-6 py-4">
-                      <span className="text-sm text-gray-900">{cls.section || '-'}</span>
+                      <span className="text-sm text-gray-900">{cls.session || '-'}</span>
                     </td>
                     <td className="px-4 sm:px-6 py-4 hidden sm:table-cell">
                       <span className="text-sm text-gray-900">{getTeacherName(cls.teacher_id)}</span>

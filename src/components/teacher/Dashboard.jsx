@@ -146,7 +146,7 @@ const Dashboard = () => {
               key={cls.id}
               className="px-3 sm:px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium text-sm"
             >
-              {cls.name} {cls.section && `- ${cls.section}`}
+              {cls.name} {cls.session && `- ${cls.session}`}
             </span>
           ))}
         </div>

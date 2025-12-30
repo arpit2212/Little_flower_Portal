@@ -17,7 +17,7 @@ export const CLASSES = [
   '12th'
 ];
 
-export const SECTIONS = ['2025-2026', '2026-2027', '2027-2028 ', '2028-2029', '2029-2030'];
+export const SESSIONS = ['2025-2026', '2026-2027', '2027-2028 ', '2028-2029', '2029-2030'];
 
 export const ATTENDANCE_STATUS = {
   PRESENT: 'present',
