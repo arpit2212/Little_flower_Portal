@@ -97,7 +97,7 @@ const AllClassesView = () => {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg sm:text-xl font-bold text-gray-800 truncate">
-                      {cls.name} {cls.session && `- ${cls.session} `}
+                      {cls.name} {cls.section && `- ${cls.section} `}
                     </h3>
                     <p className="text-sm text-gray-600 mt-1 truncate">Teacher: {cls.teacherName}</p>
                   </div>

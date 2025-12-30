@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { SESSIONS } from '../../lib/constants';
-import { UserPlus, Edit2, Trash2, Search, X, Check, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { UserPlus, Edit2, Trash2, Search, X, Check, Upload, Download, FileSpreadsheet, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const StudentManagement = () => {
@@ -22,7 +22,6 @@ const StudentManagement = () => {
   const [formData, setFormData] = useState({
     name: '',
     student_name: '',
-    roll_number: '',
     scholar_number: '',
     father_name: '',
     mother_name: '',
@@ -43,6 +42,13 @@ const StudentManagement = () => {
     house: ''
   });
 
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeFilters, setActiveFilters] = useState({
+    caste: '',
+    house: '',
+    rte: ''
+  });
+
   useEffect(() => {
     if (user) {
       fetchMyClasses();
@@ -56,19 +62,41 @@ const StudentManagement = () => {
   }, [selectedClass]);
 
   useEffect(() => {
+    let filtered = students;
+
+    // Apply Search
     if (searchTerm) {
-      const filtered = students.filter(student =>
-        (student.name || student.student_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.roll_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.scholar_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.student_id_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (student.mobile_no || student.parent_contact || '').includes(searchTerm)
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(student =>
+        (student.name || student.student_name || '').toLowerCase().includes(term) ||
+        (student.roll_number || '').toLowerCase().includes(term) ||
+        (student.scholar_number || '').toLowerCase().includes(term) ||
+        (student.student_id_number || '').toLowerCase().includes(term) ||
+        (student.father_name || '').toLowerCase().includes(term) ||
+        (student.mother_name || '').toLowerCase().includes(term) ||
+        (student.date_of_birth || '').toLowerCase().includes(term) ||
+        (student.mobile_no || student.parent_contact || '').includes(term) ||
+        (student.other_no || '').includes(term) ||
+        (student.address || '').toLowerCase().includes(term) ||
+        (student.aadhar_number || '').includes(term) ||
+        (student.family_id || '').toLowerCase().includes(term) ||
+        (student.admission_date || student.date_of_admission || '').toLowerCase().includes(term)
       );
-      setFilteredStudents(filtered);
-    } else {
-      setFilteredStudents(students);
     }
-  }, [searchTerm, students]);
+
+    // Apply Filters
+    if (activeFilters.caste) {
+      filtered = filtered.filter(student => (student.caste || '').toLowerCase() === activeFilters.caste.toLowerCase());
+    }
+    if (activeFilters.house) {
+      filtered = filtered.filter(student => (student.house || '').toLowerCase() === activeFilters.house.toLowerCase());
+    }
+    if (activeFilters.rte) {
+      filtered = filtered.filter(student => (student.rte || '').toLowerCase() === activeFilters.rte.toLowerCase());
+    }
+
+    setFilteredStudents(filtered);
+  }, [searchTerm, activeFilters, students]);
 
   const fetchMyClasses = async () => {
     try {
@@ -93,14 +121,51 @@ const StudentManagement = () => {
       const { data, error } = await supabase
         .from('students')
         .select('*')
-        .eq('class_id', selectedClass)
-        .order('roll_number');
+        .eq('class_id', selectedClass);
+        // We will sort manually after fetching to ensure numeric sorting of roll numbers
 
       if (error) throw error;
-      setStudents(data || []);
-      setFilteredStudents(data || []);
+      
+      const sortedData = (data || []).sort((a, b) => {
+        // Convert roll numbers to integers for proper numeric sorting
+        const rollA = parseInt(a.roll_number) || 0;
+        const rollB = parseInt(b.roll_number) || 0;
+        return rollA - rollB;
+      });
+
+      setStudents(sortedData);
+      setFilteredStudents(sortedData);
     } catch (error) {
       console.error('Error fetching students:', error);
+    }
+  };
+
+  const reorderStudents = async (classId) => {
+    try {
+      const { data: students, error } = await supabase
+        .from('students')
+        .select('id, name, student_name')
+        .eq('class_id', classId);
+      
+      if (error) throw error;
+      if (!students || students.length === 0) return;
+
+      const sortedStudents = students.sort((a, b) => {
+        const nameA = (a.student_name || a.name || '').toLowerCase();
+        const nameB = (b.student_name || b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
+      const updates = sortedStudents.map((student, index) => 
+        supabase
+          .from('students')
+          .update({ roll_number: (index + 1).toString() })
+          .eq('id', student.id)
+      );
+
+      await Promise.all(updates);
+    } catch (error) {
+      console.error('Error reordering students:', error);
     }
   };
 
@@ -114,7 +179,7 @@ const StudentManagement = () => {
           .update({
             name: formData.name,
             student_name: formData.student_name || formData.name,
-            roll_number: formData.roll_number,
+            // roll_number is auto-generated
             scholar_number: formData.scholar_number || null,
             father_name: formData.father_name || null,
             mother_name: formData.mother_name || null,
@@ -143,7 +208,7 @@ const StudentManagement = () => {
           .insert([{
             name: formData.name,
             student_name: formData.student_name || formData.name,
-            roll_number: formData.roll_number,
+            roll_number: '0',
             scholar_number: formData.scholar_number || null,
             father_name: formData.father_name || null,
             mother_name: formData.mother_name || null,
@@ -168,10 +233,11 @@ const StudentManagement = () => {
         if (error) throw error;
       }
 
+      await reorderStudents(selectedClass);
+
       setFormData({
         name: '',
         student_name: '',
-        roll_number: '',
         scholar_number: '',
         father_name: '',
         mother_name: '',
@@ -209,7 +275,6 @@ const StudentManagement = () => {
     setFormData({
       name: student.name || student.student_name || '',
       student_name: student.student_name || student.name || '',
-      roll_number: student.roll_number || '',
       scholar_number: student.scholar_number || '',
       father_name: student.father_name || '',
       mother_name: student.mother_name || '',
@@ -244,6 +309,9 @@ const StudentManagement = () => {
         .eq('id', studentId);
 
       if (error) throw error;
+      
+      await reorderStudents(selectedClass);
+      
       fetchStudents();
     } catch (error) {
       console.error('Error deleting student:', error);
@@ -255,7 +323,6 @@ const StudentManagement = () => {
     const templateData = [
       {
         'Student Name': 'John Doe',
-        'Roll Number': '001',
         'Scholar Number': 'SCH001',
         'Student ID Number': 'STU001',
         'Date of Birth': '2010-01-15',
@@ -275,7 +342,6 @@ const StudentManagement = () => {
       },
       {
         'Student Name': 'Jane Smith',
-        'Roll Number': '002',
         'Scholar Number': 'SCH002',
         'Student ID Number': 'STU002',
         'Date of Birth': '2010-03-20',
@@ -302,7 +368,6 @@ const StudentManagement = () => {
     // Set column widths
     const colWidths = [
       { wch: 20 }, // Student Name
-      { wch: 12 }, // Roll Number
       { wch: 15 }, // Scholar Number
       { wch: 15 }, // Student ID Number
       { wch: 15 }, // Date of Birth
@@ -354,10 +419,12 @@ const StudentManagement = () => {
         const errors = [];
 
         // Valid caste values (common Indian caste categories)
-        const validCastes = ['General', 'OBC', 'SC', 'ST', 'Other', 'General Category', 'Other Backward Class', 'Scheduled Caste', 'Scheduled Tribe'];
+        // Mapped to DB values: Gen, OBC, SC, ST, NA
+        const validCastes = ['General', 'Gen', 'OBC', 'SC', 'ST', 'Other', 'NA', 'General Category', 'Other Backward Class', 'Scheduled Caste', 'Scheduled Tribe'];
         
         // Valid RTE values
-        const validRTE = ['Yes', 'No', 'yes', 'no', 'YES', 'NO'];
+        // Mapped to DB values: RTE, no
+        const validRTE = ['Yes', 'No', 'yes', 'no', 'YES', 'NO', 'RTE', 'rte'];
 
         jsonData.forEach((row, index) => {
           const rowNum = index + 2; // +2 because index is 0-based and we have header row
@@ -366,9 +433,6 @@ const StudentManagement = () => {
           // Required fields validation
           if (!row['Student Name'] && !row['student_name']) {
             errorsForRow.push(`Row ${rowNum}: Student Name is required`);
-          }
-          if (!row['Roll Number'] && !row['roll_number']) {
-            errorsForRow.push(`Row ${rowNum}: Roll Number is required`);
           }
 
           // Validate caste field
@@ -390,7 +454,7 @@ const StudentManagement = () => {
           const rteValue = row['RTE'] || row['rte'] || '';
           if (rteValue && rteValue.trim() !== '') {
             const normalizedRTE = rteValue.trim();
-            if (!validRTE.includes(normalizedRTE)) {
+            if (!validRTE.includes(normalizedRTE) && !validRTE.some(v => v.toLowerCase() === normalizedRTE.toLowerCase())) {
               errorsForRow.push(`Row ${rowNum}: Invalid RTE value "${rteValue}". Valid values: Yes, No`);
             }
           }
@@ -399,31 +463,38 @@ const StudentManagement = () => {
             errors.push(...errorsForRow);
           } else {
             // Normalize caste value
-            let normalizedCasteValue = null;
+            let normalizedCasteValue = 'NA';
             if (casteValue && casteValue.trim() !== '') {
               const normalizedCaste = casteValue.trim();
               // Map to standard values
-              if (normalizedCaste.toLowerCase().includes('general')) {
-                normalizedCasteValue = 'General';
+              if (normalizedCaste.toLowerCase().includes('general') || normalizedCaste.toLowerCase() === 'gen') {
+                normalizedCasteValue = 'Gen';
               } else if (normalizedCaste.toLowerCase().includes('obc') || normalizedCaste.toLowerCase().includes('other backward')) {
                 normalizedCasteValue = 'OBC';
               } else if (normalizedCaste.toLowerCase().includes('sc') || normalizedCaste.toLowerCase().includes('scheduled caste')) {
                 normalizedCasteValue = 'SC';
               } else if (normalizedCaste.toLowerCase().includes('st') || normalizedCaste.toLowerCase().includes('scheduled tribe')) {
                 normalizedCasteValue = 'ST';
-              } else if (normalizedCaste.toLowerCase() === 'other') {
-                normalizedCasteValue = 'Other';
+              } else if (normalizedCaste.toLowerCase() === 'other' || normalizedCaste.toLowerCase() === 'na') {
+                normalizedCasteValue = 'NA';
               } else {
-                normalizedCasteValue = normalizedCaste;
+                // If it matches one of the DB values exactly (case insensitive)
+                if (['Gen', 'OBC', 'SC', 'ST', 'NA'].includes(normalizedCaste)) {
+                    normalizedCasteValue = normalizedCaste;
+                } else {
+                    normalizedCasteValue = 'NA';
+                }
               }
             }
 
             // Normalize RTE value
-            let normalizedRTEValue = null;
+            let normalizedRTEValue = 'no';
             if (rteValue && rteValue.trim() !== '') {
-              normalizedRTEValue = rteValue.trim().charAt(0).toUpperCase() + rteValue.trim().slice(1).toLowerCase();
-              if (normalizedRTEValue !== 'Yes' && normalizedRTEValue !== 'No') {
-                normalizedRTEValue = null;
+              const val = rteValue.trim().toLowerCase();
+              if (val === 'yes' || val === 'rte') {
+                normalizedRTEValue = 'RTE';
+              } else if (val === 'no') {
+                normalizedRTEValue = 'no';
               }
             }
 
@@ -431,7 +502,7 @@ const StudentManagement = () => {
             const studentData = {
               name: row['Student Name'] || row['student_name'] || '',
               student_name: row['Student Name'] || row['student_name'] || '',
-              roll_number: row['Roll Number'] || row['roll_number'] || '',
+              roll_number: '0',
               scholar_number: row['Scholar Number'] || row['scholar_number'] || null,
               student_id_number: row['Student ID Number'] || row['student_id_number'] || null,
               date_of_birth: row['Date of Birth'] || row['date_of_birth'] || null,
@@ -509,9 +580,9 @@ const StudentManagement = () => {
           // Extract more detailed error message
           let errorMsg = error.message;
           if (error.message.includes('caste_check')) {
-            errorMsg = `Row ${i + 2}: Invalid caste value "${student.caste}". Valid values: General, OBC, SC, ST, Other`;
+            errorMsg = `Row ${i + 2}: Invalid caste value "${student.caste}". Valid values: Gen, OBC, SC, ST, NA`;
           } else if (error.message.includes('rte')) {
-            errorMsg = `Row ${i + 2}: Invalid RTE value "${student.rte}". Valid values: Yes, No`;
+            errorMsg = `Row ${i + 2}: Invalid RTE value "${student.rte}". Valid values: RTE, no`;
           } else if (error.message.includes('violates check constraint')) {
             errorMsg = `Row ${i + 2}: ${error.message}`;
           }
@@ -528,6 +599,9 @@ const StudentManagement = () => {
       } else {
         alert(`Successfully imported ${successCount} student(s)!`);
       }
+
+      // Reorder students after import
+      await reorderStudents(selectedClass);
 
       // Reset upload state
       setUploadPreview([]);
@@ -568,10 +642,10 @@ const StudentManagement = () => {
     <div className="w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Manage Students</h2>
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <button
             onClick={downloadTemplate}
-            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-md hover:shadow-lg"
+            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-md hover:shadow-lg w-full sm:w-auto"
           >
             <Download className="w-5 h-5" />
             <span className="font-medium">Download Template</span>
@@ -583,7 +657,7 @@ const StudentManagement = () => {
             setUploadPreview([]);
             setUploadErrors([]);
             }}
-            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg"
+            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md hover:shadow-lg w-full sm:w-auto"
           >
             {showUpload ? <X className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
             <span className="font-medium">{showUpload ? 'Cancel' : 'Upload Excel'}</span>
@@ -596,7 +670,6 @@ const StudentManagement = () => {
               setFormData({
                 name: '',
                 student_name: '',
-                roll_number: '',
                 scholar_number: '',
                 father_name: '',
                 mother_name: '',
@@ -617,7 +690,7 @@ const StudentManagement = () => {
                 house: ''
               });
             }}
-            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg"
+            className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg w-full sm:w-auto"
           >
             {showForm ? <X className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
             <span className="font-medium">{showForm ? 'Cancel' : 'Add Student'}</span>
@@ -656,7 +729,7 @@ const StudentManagement = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Excel File (.xlsx or .xls)
               </label>
-              <div className="flex items-center space-x-4">
+              <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
                 <input
                   type="file"
                   accept=".xlsx,.xls"
@@ -665,7 +738,7 @@ const StudentManagement = () => {
                 />
                 <button
                   onClick={downloadTemplate}
-                  className="flex items-center space-x-2 px-4 py-2 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                  className="flex items-center justify-center space-x-2 px-4 py-2 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors w-full sm:w-auto"
                 >
                   <Download className="w-4 h-4" />
                   <span>Template</span>
@@ -679,7 +752,8 @@ const StudentManagement = () => {
                 <ul className="text-xs text-yellow-700 space-y-1 list-disc list-inside">
                   <li><strong>Caste:</strong> Must be one of: General, OBC, SC, ST, or Other</li>
                   <li><strong>RTE:</strong> Must be either "Yes" or "No"</li>
-                  <li><strong>Student Name</strong> and <strong>Roll Number</strong> are required fields</li>
+                  <li><strong>Student Name</strong> is a required field</li>
+                  <li><strong>Roll Number</strong> will be auto-generated alphabetically</li>
                 </ul>
               </div>
             </div>
@@ -705,7 +779,6 @@ const StudentManagement = () => {
                     <table className="min-w-full text-xs">
                       <thead className="bg-blue-100">
                         <tr>
-                          <th className="px-2 py-1 text-left">Roll No.</th>
                           <th className="px-2 py-1 text-left">Name</th>
                           <th className="px-2 py-1 text-left">Scholar No.</th>
                           <th className="px-2 py-1 text-left">Mobile</th>
@@ -714,7 +787,6 @@ const StudentManagement = () => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {uploadPreview.slice(0, 10).map((student, index) => (
                           <tr key={index}>
-                            <td className="px-2 py-1">{student.roll_number}</td>
                             <td className="px-2 py-1">{student.name || student.student_name}</td>
                             <td className="px-2 py-1">{student.scholar_number || '-'}</td>
                             <td className="px-2 py-1">{student.mobile_no || '-'}</td>
@@ -772,19 +844,6 @@ const StudentManagement = () => {
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value, student_name: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Roll Number *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.roll_number}
-                    onChange={(e) => setFormData({ ...formData, roll_number: e.target.value })}
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
                     required
                   />
@@ -942,12 +1001,18 @@ const StudentManagement = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Caste
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.caste}
                     onChange={(e) => setFormData({ ...formData, caste: e.target.value })}
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
-                  />
+                  >
+                    <option value="">Select Caste</option>
+                    <option value="Gen">General</option>
+                    <option value="OBC">OBC</option>
+                    <option value="SC">SC</option>
+                    <option value="ST">ST</option>
+                    <option value="NA">NA (Other)</option>
+                  </select>
                 </div>
 
                 <div>
@@ -960,8 +1025,8 @@ const StudentManagement = () => {
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
                   >
                     <option value="">Select</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
+                    <option value="RTE">Yes</option>
+                    <option value="no">No</option>
                   </select>
                 </div>
 
@@ -1010,13 +1075,13 @@ const StudentManagement = () => {
                   setShowForm(false);
                   setEditingStudent(null);
                 }}
-                className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full sm:w-auto"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md font-medium"
+                className="flex items-center justify-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md font-medium w-full sm:w-auto"
               >
                 <Check className="w-5 h-5" />
                 <span>{editingStudent ? 'Update Student' : 'Add Student'}</span>
@@ -1026,17 +1091,98 @@ const StudentManagement = () => {
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Search by name, roll number, scholar number, or ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
-          />
+      {/* Search and Filter */}
+      <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100 mb-6">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search by name, father, mother, DOB, mobile, address..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
+            />
+          </div>
+          
+          <div className="relative">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg transition-colors ${
+                showFilters || Object.values(activeFilters).some(v => v) 
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Filter className="w-5 h-5" />
+              <span>Filters</span>
+              {Object.values(activeFilters).some(v => v) && (
+                <span className="bg-indigo-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {Object.values(activeFilters).filter(v => v).length}
+                </span>
+              )}
+            </button>
+
+            {showFilters && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-100 z-50 p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold text-gray-900">Filters</h3>
+                  <button 
+                    onClick={() => {
+                      setActiveFilters({ caste: '', house: '', rte: '' });
+                      setShowFilters(false);
+                    }}
+                    className="text-xs text-indigo-600 hover:text-indigo-800"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Caste</label>
+                    <select
+                      value={activeFilters.caste}
+                      onChange={(e) => setActiveFilters(prev => ({ ...prev, caste: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value="">All Castes</option>
+                      {['Gen', 'OBC', 'SC', 'ST', 'NA'].map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">House</label>
+                    <select
+                      value={activeFilters.house}
+                      onChange={(e) => setActiveFilters(prev => ({ ...prev, house: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value="">All Houses</option>
+                      {[...new Set(students.map(s => s.house).filter(Boolean))].sort().map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">RTE</label>
+                    <select
+                      value={activeFilters.rte}
+                      onChange={(e) => setActiveFilters(prev => ({ ...prev, rte: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    >
+                      <option value="">All</option>
+                      <option value="RTE">Yes (RTE)</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1046,61 +1192,61 @@ const StudentManagement = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gradient-to-r from-gray-50 to-indigo-50">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gradient-to-r from-gray-50 to-indigo-50 z-10">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-50 z-10 whitespace-nowrap shadow-sm">
                   Roll No.
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Name
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Scholar No.
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Student ID
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Father Name
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Mother Name
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   DOB
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Session
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Mobile
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Other Contact
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Address
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Aadhar
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Caste
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   RTE
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   PEN No.
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Family ID
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   House
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Adm. Date
                 </th>
-                <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky right-0 bg-gradient-to-r from-gray-50 to-indigo-50 z-10">
+                <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider sticky right-0 bg-indigo-50 z-10 whitespace-nowrap shadow-sm">
                   Actions
                 </th>
               </tr>
@@ -1114,70 +1260,70 @@ const StudentManagement = () => {
                 </tr>
               ) : (
                 filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-3 sticky left-0 bg-white z-10">
+                  <tr key={student.id} className="group hover:bg-gray-50 transition-colors">
+                    <td className="px-3 py-3 sticky left-0 bg-white group-hover:bg-gray-50 z-10 whitespace-nowrap">
                       <span className="text-xs font-semibold text-gray-900">{student.roll_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.name || student.student_name || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.scholar_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.student_id_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.father_name || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.mother_name || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-600">
                         {student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : '-'}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.session || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.mobile_no || student.parent_contact || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.other_no || '-'}</span>
                     </td>
-                    <td className="px-3 py-3 max-w-xs">
+                    <td className="px-3 py-3 max-w-xs whitespace-nowrap">
                       <span className="text-xs text-gray-900 truncate block" title={student.address || ''}>
                         {student.address || '-'}
                       </span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.aadhar_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.caste || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.rte || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.pen_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.family_id || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.house || '-'}</span>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-600">
                         {student.admission_date || student.date_of_admission 
                           ? new Date(student.admission_date || student.date_of_admission).toLocaleDateString() 
                           : '-'}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-right sticky right-0 bg-white z-10">
+                    <td className="px-3 py-3 text-right sticky right-0 bg-white group-hover:bg-gray-50 z-10 whitespace-nowrap">
                       <div className="flex justify-end space-x-2">
                         <button
                           onClick={() => handleEdit(student)}
