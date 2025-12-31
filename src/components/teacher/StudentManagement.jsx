@@ -18,6 +18,9 @@ const StudentManagement = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadPreview, setUploadPreview] = useState([]);
   const [uploadErrors, setUploadErrors] = useState([]);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [bulkImages, setBulkImages] = useState([]);
+  const [imagePreview, setImagePreview] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -190,12 +193,47 @@ const StudentManagement = () => {
     }
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadStudentImage = async (file) => {
+    if (!file) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('student-images')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      console.error('Error uploading image:', uploadError);
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('student-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     try {
       const selectedClassObj = myClasses.find((c) => c.id === selectedClass);
       const classSession = selectedClassObj?.session || null;
+
+      let imageUrl = formData.profile_image;
+      if (selectedImage) {
+        imageUrl = await uploadStudentImage(selectedImage);
+      }
 
       if (editingStudent) {
         const { error } = await supabase
@@ -223,7 +261,8 @@ const StudentManagement = () => {
             samagra_id: formData.samagra_id || null,
             house: formData.house || null,
             gender: formData.gender || null,
-            appar_id: formData.appar_id || null
+            appar_id: formData.appar_id || null,
+            profile_image: imageUrl || null
           })
           .eq('id', editingStudent.id);
 
@@ -260,7 +299,8 @@ const StudentManagement = () => {
             house: formData.house || null,
             gender: formData.gender || null,
             appar_id: formData.appar_id || null,
-            class_id: selectedClass
+            class_id: selectedClass,
+            profile_image: imageUrl || null
           }]);
 
         if (error) throw error;
@@ -290,8 +330,11 @@ const StudentManagement = () => {
         samagra_id: '',
         house: '',
         gender: '',
-        appar_id: ''
+        appar_id: '',
+        profile_image: ''
       });
+      setSelectedImage(null);
+      setImagePreview(null);
       setShowForm(false);
       setEditingStudent(null);
       fetchStudents();
@@ -329,8 +372,10 @@ const StudentManagement = () => {
       samagra_id: student.samagra_id || '',
       house: student.house || '',
       gender: student.gender || '',
-      appar_id: student.appar_id || ''
+      appar_id: student.appar_id || '',
+      profile_image: student.profile_image || ''
     });
+    setImagePreview(student.profile_image || null);
     setShowForm(true);
   };
 
@@ -377,7 +422,8 @@ const StudentManagement = () => {
         'PEN Number': 'PEN001',
         'Appar ID': 'APP001',
         'House': 'Red',
-        'Date of Admission': '2025-04-01'
+        'Date of Admission': '2025-04-01',
+        'Profile Image URL': 'https://example.com/image.jpg'
       },
       {
         'Scholar Number': 'SCH002',
@@ -398,7 +444,8 @@ const StudentManagement = () => {
         'PEN Number': 'PEN002',
         'Appar ID': 'APP002',
         'House': 'Blue',
-        'Date of Admission': '2025-04-01'
+        'Date of Admission': '2025-04-01',
+        'Profile Image URL': ''
       }
     ];
 
@@ -584,7 +631,8 @@ const StudentManagement = () => {
               house: row['House'] || row['house'] || null,
               date_of_admission: row['Date of Admission'] || row['date_of_admission'] || null,
               admission_date: row['Date of Admission'] || row['date_of_admission'] || null,
-              class_id: selectedClass
+              class_id: selectedClass,
+              profile_image: row['Profile Image URL'] || row['profile_image_url'] || row['Profile Image'] || row['profile_image'] || null
             };
 
             mappedData.push(studentData);
@@ -634,6 +682,23 @@ const StudentManagement = () => {
       for (let i = 0; i < uploadPreview.length; i++) {
         const student = uploadPreview[i];
         
+        // Check for image upload if profile_image is a filename
+        if (student.profile_image && !student.profile_image.startsWith('http') && bulkImages.length > 0) {
+          const matchingFile = bulkImages.find(file => file.name === student.profile_image);
+          if (matchingFile) {
+            try {
+              const imageUrl = await uploadStudentImage(matchingFile);
+              if (imageUrl) {
+                student.profile_image = imageUrl;
+              }
+            } catch (imgError) {
+              console.warn(`Failed to upload image for ${student.name}:`, imgError);
+              // Continue without image or log warning? 
+              // We'll just continue with original value (which is filename, might be useful for debugging)
+            }
+          }
+        }
+
         const { error } = await supabase
           .from('students')
           .insert([student]);
@@ -669,6 +734,7 @@ const StudentManagement = () => {
       // Reset upload state
       setUploadPreview([]);
       setUploadErrors([]);
+      setBulkImages([]);
       setShowUpload(false);
       
       // Refresh student list
@@ -730,6 +796,8 @@ const StudentManagement = () => {
               setShowForm(!showForm);
               setShowUpload(false);
               setEditingStudent(null);
+              setSelectedImage(null);
+              setImagePreview(null);
               setFormData({
                 name: '',
                 student_name: '',
@@ -845,6 +913,7 @@ const StudentManagement = () => {
                           <th className="px-2 py-1 text-left">Name</th>
                           <th className="px-2 py-1 text-left">Scholar No.</th>
                           <th className="px-2 py-1 text-left">Mobile</th>
+                          <th className="px-2 py-1 text-left">Image</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -853,6 +922,16 @@ const StudentManagement = () => {
                             <td className="px-2 py-1">{student.name || student.student_name}</td>
                             <td className="px-2 py-1">{student.scholar_number || '-'}</td>
                             <td className="px-2 py-1">{student.mobile_no || '-'}</td>
+                            <td className="px-2 py-1">
+                              {student.profile_image ? (
+                                student.profile_image.startsWith('http') ? 
+                                  <span className="text-green-600">URL</span> : 
+                                  (bulkImages.some(f => f.name === student.profile_image) ? 
+                                    <span className="text-blue-600 flex items-center gap-1"><Check className="w-3 h-3" /> Ready</span> : 
+                                    <span className="text-orange-500">Missing File</span>
+                                  )
+                              ) : '-'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -895,6 +974,37 @@ const StudentManagement = () => {
             {editingStudent ? 'Edit Student' : 'Add New Student'}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Student Image */}
+            <div className="flex flex-col items-center justify-center mb-6">
+              <div className="relative w-32 h-32 mb-4">
+                {imagePreview ? (
+                  <img
+                    src={imagePreview}
+                    alt="Student Preview"
+                    className="w-full h-full object-cover rounded-full border-4 border-indigo-100 shadow-md"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-100 rounded-full flex items-center justify-center border-4 border-indigo-50 text-gray-400">
+                    <UserPlus className="w-12 h-12" />
+                  </div>
+                )}
+                <label
+                  htmlFor="student-image"
+                  className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full cursor-pointer hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                </label>
+                <input
+                  type="file"
+                  id="student-image"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+              </div>
+              <p className="text-sm text-gray-500">Upload Student Photo</p>
+            </div>
+
             {/* Basic Information */}
             <div>
               <h4 className="text-md font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">Basic Information</h4>
@@ -1151,6 +1261,8 @@ const StudentManagement = () => {
                 onClick={() => {
                   setShowForm(false);
                   setEditingStudent(null);
+                  setSelectedImage(null);
+                  setImagePreview(null);
                 }}
                 className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium w-full sm:w-auto"
               >
@@ -1273,6 +1385,9 @@ const StudentManagement = () => {
                   Roll No.
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  Photo
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Scholar No.
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
@@ -1337,7 +1452,7 @@ const StudentManagement = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan="21" className="px-6 py-12 text-center text-gray-500 text-sm sm:text-base">
+                  <td colSpan="22" className="px-6 py-12 text-center text-gray-500 text-sm sm:text-base">
                     {searchTerm ? 'No students found matching your search.' : 'No students in this class yet. Click "Add Student" to get started.'}
                   </td>
                 </tr>
@@ -1346,6 +1461,19 @@ const StudentManagement = () => {
                   <tr key={student.id} className="group hover:bg-gray-50 transition-colors">
                     <td className="px-3 py-3 sticky left-0 bg-white group-hover:bg-gray-50 z-10 whitespace-nowrap">
                       <span className="text-xs font-semibold text-gray-900">{student.roll_number || '-'}</span>
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {student.profile_image ? (
+                        <img 
+                          src={student.profile_image} 
+                          alt={student.name} 
+                          className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">
+                          {(student.name || student.student_name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
                     </td>
                    
                     <td className="px-3 py-3 whitespace-nowrap">
