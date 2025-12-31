@@ -1,12 +1,14 @@
 
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, ClipboardCheck, FileText, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardCheck, FileText, Menu, X, BarChart2 } from 'lucide-react';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import ProtectedRoute from '../components/common/ProtectedRoute';
 import Dashboard from '../components/teacher/Dashboard';
 import StudentManagement from '../components/teacher/StudentManagement';
 import AttendanceMarking from '../components/teacher/AttendanceMarking';
+import EnterMarks from '../components/teacher/EnterMarks';
+import ViewResults from '../components/teacher/ViewResults';
 import AttendanceReport from '../components/common/AttendanceReport';
 
 const TeacherDashboard = () => {
@@ -16,6 +18,8 @@ const TeacherDashboard = () => {
     { path: '', icon: LayoutDashboard, label: 'Dashboard' },
     { path: 'students', icon: Users, label: 'Manage Students' },
     { path: 'attendance', icon: ClipboardCheck, label: 'Mark Attendance' },
+    { path: 'marks', icon: FileText, label: 'Enter Marks' },
+    { path: 'view-results', icon: BarChart2, label: 'View Results' },
     { path: 'reports', icon: FileText, label: 'Reports' },
   ];
 
@@ -79,6 +83,8 @@ const TeacherDashboard = () => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/students" element={<StudentManagement />} />
                 <Route path="/attendance" element={<AttendanceMarking />} />
+                <Route path="/marks" element={<EnterMarks />} />
+                <Route path="/view-results" element={<ViewResults />} />
                 <Route path="/reports" element={<AttendanceReport role="teacher" />} />
               </Routes>
             </div>
