@@ -38,8 +38,10 @@ const StudentManagement = () => {
     other_no: '',
     pen_number: '',
     family_id: '',
-    student_id_number: '',
-    house: ''
+    samagra_id: '',
+    house: '',
+    gender: '',
+    appar_id: ''
   });
 
   const [showFilters, setShowFilters] = useState(false);
@@ -71,7 +73,7 @@ const StudentManagement = () => {
         (student.name || student.student_name || '').toLowerCase().includes(term) ||
         (student.roll_number || '').toLowerCase().includes(term) ||
         (student.scholar_number || '').toLowerCase().includes(term) ||
-        (student.student_id_number || '').toLowerCase().includes(term) ||
+        (student.samagra_id || '').toLowerCase().includes(term) ||
         (student.father_name || '').toLowerCase().includes(term) ||
         (student.mother_name || '').toLowerCase().includes(term) ||
         (student.date_of_birth || '').toLowerCase().includes(term) ||
@@ -79,6 +81,8 @@ const StudentManagement = () => {
         (student.other_no || '').includes(term) ||
         (student.address || '').toLowerCase().includes(term) ||
         (student.aadhar_number || '').includes(term) ||
+        (student.gender || '').toLowerCase().includes(term) ||
+        (student.appar_id || '').toLowerCase().includes(term) ||
         (student.family_id || '').toLowerCase().includes(term) ||
         (student.admission_date || student.date_of_admission || '').toLowerCase().includes(term)
       );
@@ -137,6 +141,7 @@ const StudentManagement = () => {
       setFilteredStudents(sortedData);
     } catch (error) {
       console.error('Error fetching students:', error);
+      alert('Failed to load students. Please check your class selection and database connection.');
     }
   };
 
@@ -156,14 +161,30 @@ const StudentManagement = () => {
         return nameA.localeCompare(nameB);
       });
 
-      const updates = sortedStudents.map((student, index) => 
+      // Update students one by one to avoid unique constraint violations
+      // We start from 1 and assign sequentially
+      // To avoid unique constraint errors during swapping, we might need a more robust approach
+      // but for now, since we are re-assigning, let's try direct assignment.
+      // If 'roll_number' has a unique constraint, updating '2' to '1' when '1' exists will fail.
+      
+      // First, set all roll numbers to a temporary high value to clear the low numbers
+      const tempUpdates = sortedStudents.map((student, index) => 
+        supabase
+          .from('students')
+          .update({ roll_number: (90000 + index).toString() })
+          .eq('id', student.id)
+      );
+      await Promise.all(tempUpdates);
+
+      // Now assign the correct ordered roll numbers
+      const finalUpdates = sortedStudents.map((student, index) => 
         supabase
           .from('students')
           .update({ roll_number: (index + 1).toString() })
           .eq('id', student.id)
       );
 
-      await Promise.all(updates);
+      await Promise.all(finalUpdates);
     } catch (error) {
       console.error('Error reordering students:', error);
     }
@@ -173,6 +194,9 @@ const StudentManagement = () => {
     e.preventDefault();
 
     try {
+      const selectedClassObj = myClasses.find((c) => c.id === selectedClass);
+      const classSession = selectedClassObj?.session || null;
+
       if (editingStudent) {
         const { error } = await supabase
           .from('students')
@@ -184,7 +208,7 @@ const StudentManagement = () => {
             father_name: formData.father_name || null,
             mother_name: formData.mother_name || null,
             date_of_birth: formData.date_of_birth || null,
-            session: formData.session || null,
+            session: classSession,
             rte: formData.rte || null,
             date_of_admission: formData.date_of_admission || formData.admission_date || null,
             admission_date: formData.admission_date || null,
@@ -196,24 +220,31 @@ const StudentManagement = () => {
             other_no: formData.other_no || null,
             pen_number: formData.pen_number || null,
             family_id: formData.family_id || null,
-            student_id_number: formData.student_id_number || null,
-            house: formData.house || null
+            samagra_id: formData.samagra_id || null,
+            house: formData.house || null,
+            gender: formData.gender || null,
+            appar_id: formData.appar_id || null
           })
           .eq('id', editingStudent.id);
 
         if (error) throw error;
       } else {
+        // Generate a temporary unique roll number
+        // We use a timestamp-based approach to ensure uniqueness during insertion
+        // Before reordering takes place
+        const tempRollNumber = `TMP${Date.now()}`;
+
         const { error } = await supabase
           .from('students')
           .insert([{
             name: formData.name,
             student_name: formData.student_name || formData.name,
-            roll_number: '0',
+            roll_number: tempRollNumber,
             scholar_number: formData.scholar_number || null,
             father_name: formData.father_name || null,
             mother_name: formData.mother_name || null,
             date_of_birth: formData.date_of_birth || null,
-            session: formData.session || null,
+            session: classSession,
             rte: formData.rte || null,
             date_of_admission: formData.date_of_admission || formData.admission_date || null,
             admission_date: formData.admission_date || null,
@@ -225,8 +256,10 @@ const StudentManagement = () => {
             other_no: formData.other_no || null,
             pen_number: formData.pen_number || null,
             family_id: formData.family_id || null,
-            student_id_number: formData.student_id_number || null,
+            samagra_id: formData.samagra_id || null,
             house: formData.house || null,
+            gender: formData.gender || null,
+            appar_id: formData.appar_id || null,
             class_id: selectedClass
           }]);
 
@@ -254,8 +287,10 @@ const StudentManagement = () => {
         other_no: '',
         pen_number: '',
         family_id: '',
-        student_id_number: '',
-        house: ''
+        samagra_id: '',
+        house: '',
+        gender: '',
+        appar_id: ''
       });
       setShowForm(false);
       setEditingStudent(null);
@@ -291,8 +326,10 @@ const StudentManagement = () => {
       other_no: student.other_no || '',
       pen_number: student.pen_number || '',
       family_id: student.family_id || '',
-      student_id_number: student.student_id_number || '',
-      house: student.house || ''
+      samagra_id: student.samagra_id || '',
+      house: student.house || '',
+      gender: student.gender || '',
+      appar_id: student.appar_id || ''
     });
     setShowForm(true);
   };
@@ -322,9 +359,9 @@ const StudentManagement = () => {
   const downloadTemplate = () => {
     const templateData = [
       {
-        'Student Name': 'John Doe',
         'Scholar Number': 'SCH001',
-        'Student ID Number': 'STU001',
+        'Student Name': 'John Doe',
+        'Samagra ID': 'SAM001',
         'Date of Birth': '2010-01-15',
         'Session': '2025-2026',
         'Father Name': 'Father Doe',
@@ -334,16 +371,18 @@ const StudentManagement = () => {
         'Family ID': 'FAM001',
         'Address': '123 Main Street, City',
         'Aadhar Number': '1234 5678 9012',
+        'Gender': 'girl',
         'Caste': 'General',
         'RTE': 'No',
         'PEN Number': 'PEN001',
+        'Appar ID': 'APP001',
         'House': 'Red',
         'Date of Admission': '2025-04-01'
       },
       {
-        'Student Name': 'Jane Smith',
         'Scholar Number': 'SCH002',
-        'Student ID Number': 'STU002',
+        'Student Name': 'Jane Smith',
+        'Samagra ID': 'SAM002',
         'Date of Birth': '2010-03-20',
         'Session': '2025-2026',
         'Father Name': 'Father Smith',
@@ -353,9 +392,11 @@ const StudentManagement = () => {
         'Family ID': 'FAM002',
         'Address': '456 Oak Avenue, City',
         'Aadhar Number': '2345 6789 0123',
+        'Gender': 'boy',
         'Caste': 'OBC',
         'RTE': 'Yes',
         'PEN Number': 'PEN002',
+        'Appar ID': 'APP002',
         'House': 'Blue',
         'Date of Admission': '2025-04-01'
       }
@@ -367,9 +408,9 @@ const StudentManagement = () => {
     
     // Set column widths
     const colWidths = [
-      { wch: 20 }, // Student Name
       { wch: 15 }, // Scholar Number
-      { wch: 15 }, // Student ID Number
+      { wch: 20 }, // Student Name
+      { wch: 15 }, // Samagra ID
       { wch: 15 }, // Date of Birth
       { wch: 12 }, // Session
       { wch: 18 }, // Father Name
@@ -379,9 +420,11 @@ const StudentManagement = () => {
       { wch: 12 }, // Family ID
       { wch: 30 }, // Address
       { wch: 18 }, // Aadhar Number
+      { wch: 10 }, // Gender
       { wch: 12 }, // Caste
       { wch: 8 },  // RTE
       { wch: 12 }, // PEN Number
+      { wch: 15 }, // Appar ID
       { wch: 10 }, // House
       { wch: 18 }  // Date of Admission
     ];
@@ -425,6 +468,8 @@ const StudentManagement = () => {
         // Valid RTE values
         // Mapped to DB values: RTE, no
         const validRTE = ['Yes', 'No', 'yes', 'no', 'YES', 'NO', 'RTE', 'rte'];
+        
+        const validGender = ['girl', 'boy', 'others'];
 
         jsonData.forEach((row, index) => {
           const rowNum = index + 2; // +2 because index is 0-based and we have header row
@@ -456,6 +501,14 @@ const StudentManagement = () => {
             const normalizedRTE = rteValue.trim();
             if (!validRTE.includes(normalizedRTE) && !validRTE.some(v => v.toLowerCase() === normalizedRTE.toLowerCase())) {
               errorsForRow.push(`Row ${rowNum}: Invalid RTE value "${rteValue}". Valid values: Yes, No`);
+            }
+          }
+
+          const genderValue = row['Gender'] || row['gender'] || '';
+          if (genderValue && genderValue.trim() !== '') {
+            const normalizedGender = genderValue.trim().toLowerCase();
+            if (!validGender.includes(normalizedGender)) {
+              errorsForRow.push(`Row ${rowNum}: Invalid gender value "${genderValue}". Valid values: girl, boy, others`);
             }
           }
 
@@ -497,6 +550,14 @@ const StudentManagement = () => {
                 normalizedRTEValue = 'no';
               }
             }
+            
+            let normalizedGenderValue = '';
+            if (genderValue && genderValue.trim() !== '') {
+              const val = genderValue.trim().toLowerCase();
+              if (validGender.includes(val)) {
+                normalizedGenderValue = val;
+              }
+            }
 
             // Map Excel columns to database fields
             const studentData = {
@@ -504,7 +565,7 @@ const StudentManagement = () => {
               student_name: row['Student Name'] || row['student_name'] || '',
               roll_number: '0',
               scholar_number: row['Scholar Number'] || row['scholar_number'] || null,
-              student_id_number: row['Student ID Number'] || row['student_id_number'] || null,
+              samagra_id: row['Samagra ID'] || row['samagra_id'] || null,
               date_of_birth: row['Date of Birth'] || row['date_of_birth'] || null,
               session: row['Session'] || row['session'] || null,
               father_name: row['Father Name'] || row['father_name'] || null,
@@ -518,6 +579,8 @@ const StudentManagement = () => {
               caste: normalizedCasteValue,
               rte: normalizedRTEValue,
               pen_number: row['PEN Number'] || row['pen_number'] || null,
+              appar_id: row['Appar ID'] || row['appar_id'] || null,
+              gender: normalizedGenderValue || null,
               house: row['House'] || row['house'] || null,
               date_of_admission: row['Date of Admission'] || row['date_of_admission'] || null,
               admission_date: row['Date of Admission'] || row['date_of_admission'] || null,
@@ -838,6 +901,18 @@ const StudentManagement = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Scholar Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.scholar_number}
+                    onChange={(e) => setFormData({ ...formData, scholar_number: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Student Name *
                   </label>
                   <input
@@ -851,24 +926,12 @@ const StudentManagement = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Scholar Number
+                    Samagra ID
                   </label>
                   <input
                     type="text"
-                    value={formData.scholar_number}
-                    onChange={(e) => setFormData({ ...formData, scholar_number: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Student ID Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.student_id_number}
-                    onChange={(e) => setFormData({ ...formData, student_id_number: e.target.value })}
+                    value={formData.samagra_id}
+                    onChange={(e) => setFormData({ ...formData, samagra_id: e.target.value })}
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
                   />
                 </div>
@@ -885,21 +948,7 @@ const StudentManagement = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Session
-                  </label>
-                  <select
-                    value={formData.session}
-                    onChange={(e) => setFormData({ ...formData, session: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
-                  >
-                    <option value="">Select Session</option>
-                    {SESSIONS.map((session) => (
-                      <option key={session} value={session}>{session}</option>
-                    ))}
-                  </select>
-                </div>
+                
               </div>
             </div>
 
@@ -999,6 +1048,22 @@ const StudentManagement = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Gender
+                  </label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="girl">Girl</option>
+                    <option value="boy">Boy</option>
+                    <option value="others">Others</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Caste
                   </label>
                   <select
@@ -1038,6 +1103,18 @@ const StudentManagement = () => {
                     type="text"
                     value={formData.pen_number}
                     onChange={(e) => setFormData({ ...formData, pen_number: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Appar ID
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.appar_id}
+                    onChange={(e) => setFormData({ ...formData, appar_id: e.target.value })}
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-gray-800"
                   />
                 </div>
@@ -1196,13 +1273,16 @@ const StudentManagement = () => {
                   Roll No.
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                  Name
-                </th>
-                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Scholar No.
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                  Student ID
+                  Name
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  Samagra ID
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  Gender
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Father Name
@@ -1238,6 +1318,9 @@ const StudentManagement = () => {
                   PEN No.
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
+                  Appar ID
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                   Family ID
                 </th>
                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
@@ -1254,7 +1337,7 @@ const StudentManagement = () => {
             <tbody className="bg-white divide-y divide-gray-100">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan="19" className="px-6 py-12 text-center text-gray-500 text-sm sm:text-base">
+                  <td colSpan="21" className="px-6 py-12 text-center text-gray-500 text-sm sm:text-base">
                     {searchTerm ? 'No students found matching your search.' : 'No students in this class yet. Click "Add Student" to get started.'}
                   </td>
                 </tr>
@@ -1264,15 +1347,20 @@ const StudentManagement = () => {
                     <td className="px-3 py-3 sticky left-0 bg-white group-hover:bg-gray-50 z-10 whitespace-nowrap">
                       <span className="text-xs font-semibold text-gray-900">{student.roll_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      <span className="text-xs text-gray-900">{student.name || student.student_name || '-'}</span>
-                    </td>
+                   
                     <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.scholar_number || '-'}</span>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      <span className="text-xs text-gray-900">{student.student_id_number || '-'}</span>
+                     <td className="px-3 py-3 whitespace-nowrap">
+                      <span className="text-xs text-gray-900">{student.name || student.student_name || '-'}</span>
                     </td>
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="text-xs text-gray-900">{student.samagra_id || '-'}</span>
+                </td>
+                
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="text-xs text-gray-900">{student.gender || '-'}</span>
+                </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.father_name || '-'}</span>
                     </td>
@@ -1307,9 +1395,12 @@ const StudentManagement = () => {
                     <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.rte || '-'}</span>
                     </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      <span className="text-xs text-gray-900">{student.pen_number || '-'}</span>
-                    </td>
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="text-xs text-gray-900">{student.pen_number || '-'}</span>
+                </td>
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <span className="text-xs text-gray-900">{student.appar_id || '-'}</span>
+                </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs text-gray-900">{student.family_id || '-'}</span>
                     </td>
