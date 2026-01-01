@@ -88,7 +88,6 @@ const AttendanceReport = ({ role }) => {
           date,
           present: dayRecords.filter(r => r.status === 'present').length,
           absent: dayRecords.filter(r => r.status === 'absent').length,
-          late: dayRecords.filter(r => r.status === 'late').length,
           excused: dayRecords.filter(r => r.status === 'excused').length,
           total: students.length
         };
@@ -96,14 +95,14 @@ const AttendanceReport = ({ role }) => {
       setDailyAttendance(dailySummary);
 
       const report = students.map((student) => {
+        // Link attendance using samagra_id
         const studentAttendance = attendanceRecords.filter(
-          (record) => record.student_id === student.id
+          (record) => record.samagra_id === student.samagra_id
         );
 
         const totalDays = studentAttendance.length;
         const presentDays = studentAttendance.filter(r => r.status === 'present').length;
         const absentDays = studentAttendance.filter(r => r.status === 'absent').length;
-        const lateDays = studentAttendance.filter(r => r.status === 'late').length;
         const excusedDays = studentAttendance.filter(r => r.status === 'excused').length;
 
         const attendancePercentage = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : 0;
@@ -113,7 +112,6 @@ const AttendanceReport = ({ role }) => {
           totalDays,
           presentDays,
           absentDays,
-          lateDays,
           excusedDays,
           attendancePercentage,
           attendanceByDate: uniqueDates.map(date => {
@@ -138,11 +136,11 @@ const AttendanceReport = ({ role }) => {
       return;
     }
 
-    const headers = ['Roll Number', 'Name', 'Total Days', 'Present', 'Absent', 'Late', 'Excused', 'Attendance %'];
+    const headers = ['Roll Number', 'Name', 'Total Days', 'Present', 'Absent', 'Excused', 'Attendance %'];
     const csvContent = [
       headers.join(','),
       ...reportData.map((row) =>
-        [row.roll_number, `"${row.name}"`, row.totalDays, row.presentDays, row.absentDays, row.lateDays, row.excusedDays, row.attendancePercentage].join(',')
+        [row.roll_number, `"${row.name}"`, row.totalDays, row.presentDays, row.absentDays, row.excusedDays, row.attendancePercentage].join(',')
       )
     ].join('\n');
 
@@ -256,7 +254,6 @@ const AttendanceReport = ({ role }) => {
               <th class="text-center">Total Days</th>
               <th class="text-center">Present</th>
               <th class="text-center">Absent</th>
-              <th class="text-center">Late</th>
               <th class="text-center">Excused</th>
               <th class="text-center">Attendance %</th>
             </tr>
@@ -269,7 +266,6 @@ const AttendanceReport = ({ role }) => {
                 <td class="text-center">${row.totalDays}</td>
                 <td class="text-center"><span class="badge badge-green">${row.presentDays}</span></td>
                 <td class="text-center"><span class="badge badge-red">${row.absentDays}</span></td>
-                <td class="text-center"><span class="badge badge-yellow">${row.lateDays}</span></td>
                 <td class="text-center"><span class="badge badge-blue">${row.excusedDays}</span></td>
                 <td class="text-center">
                   <span class="${row.attendancePercentage >= 80 ? 'attendance-high' : row.attendancePercentage >= 60 ? 'attendance-medium' : 'attendance-low'} badge">
@@ -289,7 +285,6 @@ const AttendanceReport = ({ role }) => {
                 <th>Date</th>
                 <th class="text-center">Present</th>
                 <th class="text-center">Absent</th>
-                <th class="text-center">Late</th>
                 <th class="text-center">Excused</th>
                 <th class="text-center">Total</th>
                 <th class="text-center">Attendance %</th>
@@ -301,7 +296,6 @@ const AttendanceReport = ({ role }) => {
                   <td><strong>${format(new Date(day.date), 'MMM dd, yyyy')}</strong></td>
                   <td class="text-center"><span class="badge badge-green">${day.present}</span></td>
                   <td class="text-center"><span class="badge badge-red">${day.absent}</span></td>
-                  <td class="text-center"><span class="badge badge-yellow">${day.late}</span></td>
                   <td class="text-center"><span class="badge badge-blue">${day.excused}</span></td>
                   <td class="text-center">${day.total}</td>
                   <td class="text-center">
@@ -452,7 +446,6 @@ const AttendanceReport = ({ role }) => {
                     <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase hidden sm:table-cell">Total</th>
                     <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Present</th>
                     <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase hidden md:table-cell">Absent</th>
-                    <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase hidden lg:table-cell">Late</th>
                     <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Attendance %</th>
                   </tr>
                 </thead>
@@ -476,11 +469,6 @@ const AttendanceReport = ({ role }) => {
                       <td className="px-4 sm:px-6 py-4 text-center hidden md:table-cell">
                         <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
                           {row.absentDays}
-                        </span>
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 text-center hidden lg:table-cell">
-                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
-                          {row.lateDays}
                         </span>
                       </td>
                       <td className="px-4 sm:px-6 py-4 text-center">
@@ -542,7 +530,6 @@ const AttendanceReport = ({ role }) => {
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Date</th>
                       <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Present</th>
                       <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase hidden md:table-cell">Absent</th>
-                      <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase hidden lg:table-cell">Late</th>
                       <th className="px-4 sm:px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Rate</th>
                     </tr>
                   </thead>
@@ -562,11 +549,6 @@ const AttendanceReport = ({ role }) => {
                         <td className="px-4 sm:px-6 py-4 text-center hidden md:table-cell">
                           <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
                             {day.absent}
-                          </span>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 text-center hidden lg:table-cell">
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800">
-                            {day.late}
                           </span>
                         </td>
                         <td className="px-4 sm:px-6 py-4 text-center">

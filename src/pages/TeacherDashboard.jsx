@@ -8,6 +8,7 @@ import Dashboard from '../components/teacher/Dashboard';
 import StudentManagement from '../components/teacher/StudentManagement';
 import AttendanceMarking from '../components/teacher/AttendanceMarking';
 import EnterMarks from '../components/teacher/EnterMarks';
+import EnterNonScholasticMarks from '../components/teacher/EnterNonScholasticMarks';
 import ViewResults from '../components/teacher/ViewResults';
 import AttendanceReport from '../components/common/AttendanceReport';
 
@@ -19,6 +20,7 @@ const TeacherDashboard = () => {
     { path: 'students', icon: Users, label: 'Manage Students' },
     { path: 'attendance', icon: ClipboardCheck, label: 'Mark Attendance' },
     { path: 'marks', icon: FileText, label: 'Enter Marks' },
+    { path: 'non-scholastic-marks', icon: FileText, label: 'Non-Scholastic Marks' },
     { path: 'view-results', icon: BarChart2, label: 'View Results' },
     { path: 'reports', icon: FileText, label: 'Reports' },
   ];
@@ -84,6 +86,7 @@ const TeacherDashboard = () => {
                 <Route path="/students" element={<StudentManagement />} />
                 <Route path="/attendance" element={<AttendanceMarking />} />
                 <Route path="/marks" element={<EnterMarks />} />
+                <Route path="/non-scholastic-marks" element={<EnterNonScholasticMarks />} />
                 <Route path="/view-results" element={<ViewResults />} />
                 <Route path="/reports" element={<AttendanceReport role="teacher" />} />
               </Routes>

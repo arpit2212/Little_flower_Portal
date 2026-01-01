@@ -54,7 +54,13 @@ const AttendanceMarking = () => {
         .eq('class_id', selectedClass)
         .order('roll_number');
 
-      setStudents(studentsData || []);
+      const sortedStudents = (studentsData || []).sort((a, b) => {
+        const rollA = parseInt(a.roll_number) || 0;
+        const rollB = parseInt(b.roll_number) || 0;
+        return rollA - rollB;
+      });
+
+      setStudents(sortedStudents);
 
       const { data: attendanceData } = await supabase
         .from('attendance')
@@ -68,8 +74,12 @@ const AttendanceMarking = () => {
         const remarksMap = {};
         
         attendanceData.forEach((record) => {
-          attendanceMap[record.student_id] = record.status;
-          remarksMap[record.student_id] = record.remarks || '';
+          // Find student using samagra_id since attendance table uses it as FK
+          const student = sortedStudents.find(s => s.samagra_id === record.samagra_id);
+          if (student) {
+            attendanceMap[student.id] = record.status;
+            remarksMap[student.id] = record.remarks || '';
+          }
         });
         
         setAttendance(attendanceMap);
@@ -118,7 +128,7 @@ const AttendanceMarking = () => {
         .eq('date', selectedDate);
 
       const attendanceRecords = students.map((student) => ({
-        student_id: student.id,
+        samagra_id: student.samagra_id,
         class_id: selectedClass,
         date: selectedDate,
         status: attendance[student.id] || ATTENDANCE_STATUS.PRESENT,
@@ -250,10 +260,6 @@ const AttendanceMarking = () => {
           <p className="text-sm text-red-700 font-medium">Absent</p>
           <p className="text-2xl font-bold text-red-600 mt-1">{getStatusCount(ATTENDANCE_STATUS.ABSENT)}</p>
         </div>
-        <div className="bg-amber-50 rounded-xl shadow-md p-4 border border-amber-200">
-          <p className="text-sm text-amber-700 font-medium">Late</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">{getStatusCount(ATTENDANCE_STATUS.LATE)}</p>
-        </div>
       </div>
 
       {/* Attendance Table - Mobile Optimized */}
@@ -264,6 +270,9 @@ const AttendanceMarking = () => {
               <tr>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Roll No.
+                </th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Scholar No.
                 </th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Student Name
@@ -290,6 +299,9 @@ const AttendanceMarking = () => {
                       <span className="text-sm font-semibold text-gray-900">{student.roll_number}</span>
                     </td>
                     <td className="px-3 sm:px-6 py-4">
+                      <span className="text-sm text-gray-500">{student.scholar_number}</span>
+                    </td>
+                    <td className="px-3 sm:px-6 py-4">
                       <span className="text-sm text-gray-900 block">{student.name}</span>
                       <input
                         type="text"
@@ -301,7 +313,9 @@ const AttendanceMarking = () => {
                     </td>
                     <td className="px-3 sm:px-6 py-4">
                       <div className="flex flex-wrap gap-1 sm:gap-2">
-                        {Object.entries(ATTENDANCE_STATUS).map(([key, value]) => (
+                        {Object.entries(ATTENDANCE_STATUS)
+                          .filter(([key]) => key !== 'LATE')
+                          .map(([key, value]) => (
                           <button
                             key={value}
                             onClick={() => handleAttendanceChange(student.id, value)}
