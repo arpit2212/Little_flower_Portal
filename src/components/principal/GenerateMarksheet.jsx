@@ -1,0 +1,461 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../../lib/supabase';
+import { FileText, Search, Download, Loader2, Filter } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
+import MarksheetTemplate from './MarksheetTemplate';
+
+const GenerateMarksheet = () => {
+  const [loading, setLoading] = useState(false);
+  const [classes, setClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [students, setStudents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [generatingPdf, setGeneratingPdf] = useState(null); // student id being processed
+  const [pdfData, setPdfData] = useState(null);
+  const templateRef = useRef(null);
+
+  useEffect(() => {
+    fetchClasses();
+  }, []);
+
+  useEffect(() => {
+    if (selectedClass) {
+      fetchStudents(selectedClass);
+    } else {
+      setStudents([]);
+    }
+  }, [selectedClass]);
+
+  useEffect(() => {
+    // When pdfData is set, trigger PDF generation
+    if (pdfData && templateRef.current) {
+      generatePdfFromTemplate();
+    }
+  }, [pdfData]);
+
+  const fetchClasses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('classes')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setClasses(data || []);
+    } catch (error) {
+      console.error('Error fetching classes:', error);
+    }
+  };
+
+  const fetchStudents = async (classId) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('class_id', classId)
+        .order('roll_number', { ascending: true });
+      
+      if (error) throw error;
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generatePdfFromTemplate = async () => {
+    if (!templateRef.current || !pdfData) return;
+
+    const element = templateRef.current;
+    const opt = {
+      margin: 0,
+      filename: `${pdfData.student.name}_Marksheet.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 3, useCORS: true }, // Increased scale for better font rendering
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    try {
+      await html2pdf().set(opt).from(element).save();
+    } catch (error) {
+      console.error("PDF Generation Error:", error);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setGeneratingPdf(null);
+      setPdfData(null); // Reset after generation
+    }
+  };
+
+  const prepareMarksheetData = async (student) => {
+    setGeneratingPdf(student.id);
+    try {
+      const selectedClassData = classes.find(c => c.id === selectedClass);
+      const classLevel = selectedClassData ? selectedClassData.name : '';
+      const session = selectedClassData ? selectedClassData.session : '2025-26';
+
+      // 1. Fetch Subjects
+      const { data: subjects } = await supabase
+        .from('subjects')
+        .select('*')
+        .eq('class_level', classLevel);
+
+      // 2. Fetch Exam Types
+      const { data: examTypes } = await supabase
+        .from('exam_types')
+        .select('*')
+        .order('display_order');
+
+      // 3. Fetch Exam Configurations
+      const { data: examConfigs } = await supabase
+        .from('exam_configurations')
+        .select('*')
+        .eq('class_level', classLevel);
+
+      // 4. Fetch Student Marks
+      const { data: marks } = await supabase
+        .from('student_marks')
+        .select('*, exam_configurations(*)')
+        .eq('student_id', student.id);
+
+      // 5. Fetch Non-Scholastic Activities
+      const { data: nsActivities } = await supabase
+        .from('non_scholastic_activities')
+        .select('*, non_scholastic_categories(*)')
+        .eq('class_level', classLevel)
+        .order('display_order');
+
+      // 6. Fetch Student Non-Scholastic Grades
+      const { data: nsGrades } = await supabase
+        .from('student_non_scholastic')
+        .select('*')
+        .eq('student_id', student.id);
+
+      // --- Process Scholastic Data ---
+      // Group subjects by base name (removing " Internal" or " Theory" suffix)
+      const groupedSubjects = {};
+      
+      subjects?.forEach(sub => {
+        let baseName = sub.subject_name;
+        let type = 'main'; // main, internal, theory
+        
+        if (baseName.trim().endsWith('Internal')) {
+            baseName = baseName.replace(/ Internal$/i, '').trim();
+            type = 'internal';
+        } else if (baseName.trim().endsWith('Theory')) {
+            baseName = baseName.replace(/ Theory$/i, '').trim();
+            type = 'theory';
+        }
+
+        if (!groupedSubjects[baseName]) {
+            groupedSubjects[baseName] = { name: baseName, components: [] };
+        }
+        groupedSubjects[baseName].components.push({ ...sub, type });
+      });
+
+      const processedScholastic = Object.values(groupedSubjects).map(group => {
+        const getCombinedExamData = (examNameKeyword) => {
+            const type = examTypes?.find(t => t.exam_name.toLowerCase().includes(examNameKeyword.toLowerCase()));
+            if (!type) return { max: '-', obt: '-' };
+
+            let totalMax = 0;
+            let totalObt = 0;
+            let hasData = false;
+            let isAbsent = true; // Assume absent until proven present
+
+            group.components.forEach(comp => {
+                const config = examConfigs?.find(c => c.subject_id === comp.id && c.exam_type_id === type.id);
+                if (config) {
+                    hasData = true;
+                    totalMax += parseFloat(config.max_marks || 0);
+                    
+                    const markEntry = marks?.find(m => m.exam_configuration_id === config.id);
+                    if (markEntry && !markEntry.is_absent) {
+                        isAbsent = false;
+                        totalObt += parseFloat(markEntry.marks_obtained || 0);
+                    }
+                }
+            });
+
+            if (!hasData) return { max: '-', obt: '-' };
+            if (isAbsent && totalObt === 0) return { max: totalMax, obt: 'AB' };
+            
+            return {
+                max: totalMax,
+                obt: totalObt
+            };
+        };
+
+        const unitTest = getCombinedExamData('Unit');
+        const term1 = getCombinedExamData('I-Term');
+        const term2 = getCombinedExamData('Half Yearly');
+        const annual = getCombinedExamData('Annual');
+
+        // Calculate Aggregate for Grade
+        let grandMax = 0;
+        let grandObt = 0;
+        
+        [unitTest, term1, term2, annual].forEach(exam => {
+            if (exam.max !== '-' && !isNaN(parseFloat(exam.max))) grandMax += parseFloat(exam.max);
+            if (exam.obt !== '-' && exam.obt !== 'AB' && !isNaN(parseFloat(exam.obt))) grandObt += parseFloat(exam.obt);
+        });
+
+        const percentage = grandMax > 0 ? (grandObt / grandMax) * 100 : 0;
+        let grade = '';
+        if (grandMax > 0) {
+            if (percentage >= 91) grade = 'A1';
+            else if (percentage >= 81) grade = 'A2';
+            else if (percentage >= 71) grade = 'B1';
+            else if (percentage >= 61) grade = 'B2';
+            else if (percentage >= 51) grade = 'C1';
+            else if (percentage >= 41) grade = 'C2';
+            else if (percentage >= 33) grade = 'D';
+            else grade = 'E';
+        }
+
+        return {
+            subject: group.name,
+            unitTest,
+            term1,
+            term2,
+            annual,
+            grade
+        };
+      });
+
+      // Calculate Totals
+      const calculateTotal = (examKey) => {
+        let maxTotal = 0;
+        let obtTotal = 0;
+        processedScholastic.forEach(sub => {
+            const d = sub[examKey];
+            if (d.max !== '-' && !isNaN(parseFloat(d.max))) maxTotal += parseFloat(d.max);
+            if (d.obt !== '-' && d.obt !== 'AB' && !isNaN(parseFloat(d.obt))) obtTotal += parseFloat(d.obt);
+        });
+        const percentage = maxTotal > 0 ? ((obtTotal / maxTotal) * 100).toFixed(2) : '';
+        return { max: maxTotal || '', obt: obtTotal || '', percentage: percentage };
+      };
+
+      const totals = {
+        unitTest: calculateTotal('unitTest'),
+        term1: calculateTotal('term1'),
+        term2: calculateTotal('term2'),
+        annual: calculateTotal('annual'),
+        aggregatePercentage: '' // Calculate overall
+      };
+
+      // Overall Percentage
+      const allMax = parseFloat(totals.unitTest.max || 0) + parseFloat(totals.term1.max || 0) + parseFloat(totals.term2.max || 0) + parseFloat(totals.annual.max || 0);
+      const allObt = parseFloat(totals.unitTest.obt || 0) + parseFloat(totals.term1.obt || 0) + parseFloat(totals.term2.obt || 0) + parseFloat(totals.annual.obt || 0);
+      totals.aggregatePercentage = allMax > 0 ? ((allObt / allMax) * 100).toFixed(2) + '%' : '';
+
+
+      // --- Process Non-Scholastic Data ---
+      const getNSData = (activityName) => {
+        // Find activity by name (fuzzy)
+        const activity = nsActivities?.find(a => a.activity_name.toLowerCase().includes(activityName.toLowerCase()));
+        if (!activity) return null;
+        
+        // Find grade (Assuming Annual Exam usually, or check all)
+        // For simplicity, taking the first matching entry or specifically Annual
+        const entry = nsGrades?.find(g => g.activity_id === activity.id); // Maybe filter by exam type if multiple
+        
+        if (!entry) return { name: activity.activity_name, grade: '-' };
+        return {
+            name: activity.activity_name,
+            grade: entry.grade || entry.numeric_value || '-'
+        };
+      };
+
+      // Helper to group by category
+      const getCategoryItems = (categoryName) => {
+         const categoryId = nsActivities?.find(a => a.non_scholastic_categories?.category_name.includes(categoryName))?.category_id;
+         if (!categoryId) return [];
+         
+         return nsActivities
+            .filter(a => a.category_id === categoryId)
+            .map(a => {
+                const entry = nsGrades?.find(g => g.activity_id === a.id);
+                return {
+                    name: a.activity_name,
+                    grade: entry ? (entry.grade || entry.numeric_value) : '-'
+                };
+            });
+      };
+
+      const coCurricular = getCategoryItems('CO-CURRICULAR');
+      const personalAttributes = getCategoryItems('PERSONAL');
+      
+      // Health
+      const getValue = (name) => {
+         const item = nsActivities?.find(a => a.activity_name.toLowerCase().includes(name.toLowerCase()));
+         if (!item) return '-';
+         const entry = nsGrades?.find(g => g.activity_id === item.id);
+         return entry ? (entry.numeric_value || entry.grade) : '-';
+      };
+
+      const health = {
+        height: getValue('Height'),
+        weight: getValue('Weight'),
+        physical: getValue('Physical Development')
+      };
+
+      const attendance = {
+        workingDays: getValue('Total Working Days'),
+        attended: getValue('Total Days Attended'),
+        percentage: getValue('Percentage of Attendance')
+      };
+
+      setPdfData({
+        student: {
+            name: student.name,
+            fatherName: student.father_name,
+            motherName: student.mother_name,
+            dob: student.date_of_birth,
+            class: classLevel,
+            section: 'A', // Default
+            scholarNo: student.scholar_number,
+            rollNo: student.roll_number,
+            photo: student.profile_image
+        },
+        scholastic: processedScholastic,
+        totals,
+        nonScholastic: {
+            coCurricular,
+            personalAttributes,
+            health,
+            attendance
+        },
+        session: session,
+        result: "Pass & Congratulations! Promoted to Next Class" // Logic needed?
+      });
+
+    } catch (error) {
+      console.error('Error generating marksheet data:', error);
+      setGeneratingPdf(null);
+    }
+  };
+
+  const filteredStudents = students.filter(student => 
+    student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.roll_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.scholar_number?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Hidden Template for PDF Generation */}
+      <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+        <MarksheetTemplate data={pdfData} componentRef={templateRef} />
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Generate Marksheets</h1>
+          <p className="text-gray-500 mt-1">Select a class and generate student marksheets</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="w-full sm:w-64">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Select Class</label>
+          <select
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            value={selectedClass}
+            onChange={(e) => setSelectedClass(e.target.value)}
+          >
+            <option value="">-- Select Class --</option>
+            {classes.map((cls) => (
+              <option key={cls.id} value={cls.id}>
+                {cls.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div className="flex-1 w-full">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Search Student</label>
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input
+                    type="text"
+                    placeholder="Search by name, roll no, or scholar no..."
+                    className="w-full pl-10 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        </div>
+      ) : selectedClass && filteredStudents.length > 0 ? (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Scholar No</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Father's Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredStudents.map((student) => (
+                  <tr key={student.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.roll_number || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.scholar_number || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.father_name || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => prepareMarksheetData(student)}
+                        disabled={generatingPdf === student.id}
+                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                      >
+                        {generatingPdf === student.id ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="h-3 w-3 mr-1" />
+                            Generate Marksheet
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : selectedClass ? (
+        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100 mb-4">
+            <Filter className="h-6 w-6 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900">No students found</h3>
+          <p className="mt-1 text-gray-500">No students found in this class matching your search.</p>
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
+            <Search className="h-6 w-6 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900">Select a Class</h3>
+          <p className="mt-1 text-gray-500">Please select a class to view students and generate marksheets.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GenerateMarksheet;

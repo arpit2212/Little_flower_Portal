@@ -1,6 +1,6 @@
 // PrincipalDashboard.jsx
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCog, FileText, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, UserCog, FileText, Menu, X, GraduationCap, FileDown } from 'lucide-react';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import ProtectedRoute from '../components/common/ProtectedRoute';
@@ -8,6 +8,8 @@ import Dashboard from '../components/principal/Dashboard';
 import AllClassesView from '../components/principal/AllClassesView';
 import AssignTeacher from '../components/principal/AssignTeacher';
 import AttendanceReport from '../components/common/AttendanceReport';
+import ViewResults from '../components/principal/ViewResults';
+import GenerateMarksheet from '../components/principal/GenerateMarksheet';
 
 const PrincipalDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,6 +17,8 @@ const PrincipalDashboard = () => {
   const navItems = [
     { path: '', icon: LayoutDashboard, label: 'Dashboard' },
     { path: 'classes', icon: Users, label: 'All Classes' },
+    { path: 'results', icon: GraduationCap, label: 'View Results' },
+    { path: 'generate-marksheet', icon: FileDown, label: 'Generate Marksheet' },
     { path: 'assign-teacher', icon: UserCog, label: 'Assign Teachers' },
     { path: 'reports', icon: FileText, label: 'Reports' },
   ];
@@ -73,11 +77,13 @@ const PrincipalDashboard = () => {
           </aside>
 
           {/* Main Content - Full Width */}
-          <main className="flex-1 w-full p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
             <div className="w-full">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/classes" element={<AllClassesView />} />
+                <Route path="/results" element={<ViewResults />} />
+                <Route path="/generate-marksheet" element={<GenerateMarksheet />} />
                 <Route path="/assign-teacher" element={<AssignTeacher />} />
                 <Route path="/reports" element={<AttendanceReport role="principal" />} />
               </Routes>
