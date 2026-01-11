@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
-import { FileText, Search, Download, Loader2, Filter } from 'lucide-react';
+import { FileText, Search, Download, Loader2, Filter, Eye, X } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import MarksheetTemplate from './MarksheetTemplate';
 
@@ -12,7 +12,10 @@ const GenerateMarksheet = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [generatingPdf, setGeneratingPdf] = useState(null); // student id being processed
   const [pdfData, setPdfData] = useState(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const templateRef = useRef(null);
+  const previewRef = useRef(null);
 
   useEffect(() => {
     fetchClasses();
@@ -27,11 +30,16 @@ const GenerateMarksheet = () => {
   }, [selectedClass]);
 
   useEffect(() => {
-    // When pdfData is set, trigger PDF generation
-    if (pdfData && templateRef.current) {
-      generatePdfFromTemplate();
+    // When pdfData is set, check mode
+    if (pdfData) {
+        if (previewMode) {
+            setShowPreviewModal(true);
+            setGeneratingPdf(null);
+        } else if (templateRef.current) {
+            generatePdfFromTemplate();
+        }
     }
-  }, [pdfData]);
+  }, [pdfData, previewMode]);
 
   const fetchClasses = async () => {
     try {
@@ -64,8 +72,33 @@ const GenerateMarksheet = () => {
     }
   };
 
+  const getBase64FromUrl = async (url) => {
+    if (!url) return null;
+    try {
+        const response = await fetch(url + '?t=' + new Date().getTime(), { mode: 'cors' });
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    } catch (error) {
+        console.error("Error converting image to base64:", error);
+        return null;
+    }
+  };
+
   const generatePdfFromTemplate = async () => {
-    if (!templateRef.current || !pdfData) return;
+    if (!pdfData) return;
+
+    if (!templateRef.current) {
+      console.error("Template ref is missing despite pdfData being present");
+      setGeneratingPdf(null);
+      setPdfData(null);
+      alert("Error: Marksheet template could not be loaded.");
+      return;
+    }
 
     const element = templateRef.current;
     const opt = {
@@ -87,8 +120,9 @@ const GenerateMarksheet = () => {
     }
   };
 
-  const prepareMarksheetData = async (student) => {
+  const prepareMarksheetData = async (student, mode = 'pdf') => {
     setGeneratingPdf(student.id);
+    setPreviewMode(mode === 'preview');
     try {
       const selectedClassData = classes.find(c => c.id === selectedClass);
       const classLevel = selectedClassData ? selectedClassData.name : '';
@@ -306,6 +340,11 @@ const GenerateMarksheet = () => {
         percentage: getValue('Percentage of Attendance')
       };
 
+      let photoBase64 = null;
+      if (student.profile_image) {
+          photoBase64 = await getBase64FromUrl(student.profile_image);
+      }
+
       setPdfData({
         student: {
             name: student.name,
@@ -316,7 +355,7 @@ const GenerateMarksheet = () => {
             section: 'A', // Default
             scholarNo: student.scholar_number,
             rollNo: student.roll_number,
-            photo: student.profile_image
+            photo: photoBase64 || student.profile_image
         },
         scholastic: processedScholastic,
         totals,
@@ -327,7 +366,11 @@ const GenerateMarksheet = () => {
             attendance
         },
         session: session,
-        result: "Pass & Congratulations! Promoted to Next Class" // Logic needed?
+        result: {
+            division: '-',
+            remark: '-',
+            status: "Pass & Congratulations! Promoted to Class " + (student.next_class || "Next")
+        }
       });
 
     } catch (error) {
@@ -346,7 +389,7 @@ const GenerateMarksheet = () => {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Hidden Template for PDF Generation */}
       <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-        <MarksheetTemplate data={pdfData} componentRef={templateRef} />
+        <MarksheetTemplate data={pdfData} ref={templateRef} />
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -398,6 +441,7 @@ const GenerateMarksheet = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Photo</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Scholar No</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
@@ -408,28 +452,56 @@ const GenerateMarksheet = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredStudents.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-100">
+                        {student.profile_image ? (
+                          <img 
+                            src={student.profile_image} 
+                            alt={student.name}
+                            className="h-full w-full object-cover"
+                            crossOrigin="anonymous"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-gray-400">
+                            <span className="text-xs">No Img</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.roll_number || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.scholar_number || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.father_name || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => prepareMarksheetData(student)}
-                        disabled={generatingPdf === student.id}
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                      >
-                        {generatingPdf === student.id ? (
-                          <>
-                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="h-3 w-3 mr-1" />
-                            Generate Marksheet
-                          </>
-                        )}
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => prepareMarksheetData(student, 'preview')}
+                          disabled={generatingPdf === student.id}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                          title="Preview Marksheet"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => prepareMarksheetData(student, 'pdf')}
+                          disabled={generatingPdf === student.id}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        >
+                          {generatingPdf === student.id ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="h-3 w-3 mr-1" />
+                              Generate
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -452,6 +524,40 @@ const GenerateMarksheet = () => {
           </div>
           <h3 className="text-lg font-medium text-gray-900">Select a Class</h3>
           <p className="mt-1 text-gray-500">Please select a class to view students and generate marksheets.</p>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreviewModal && pdfData && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Marksheet Preview</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                      setPreviewMode(false);
+                      setTimeout(() => generatePdfFromTemplate(), 100);
+                  }}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Download PDF
+                </button>
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-500"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-gray-100 flex justify-center">
+              <div className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
+                <MarksheetTemplate data={pdfData} />
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
