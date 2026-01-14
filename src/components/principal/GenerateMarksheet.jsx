@@ -237,14 +237,14 @@ const GenerateMarksheet = () => {
         const percentage = grandMax > 0 ? (grandObt / grandMax) * 100 : 0;
         let grade = '';
         if (grandMax > 0) {
-            if (percentage >= 91) grade = 'A1';
-            else if (percentage >= 81) grade = 'A2';
-            else if (percentage >= 71) grade = 'B1';
-            else if (percentage >= 61) grade = 'B2';
-            else if (percentage >= 51) grade = 'C1';
-            else if (percentage >= 41) grade = 'C2';
+            if (percentage > 85) grade = 'A+';
+            else if (percentage >= 76) grade = 'A';
+            else if (percentage >= 66) grade = 'B+';
+            else if (percentage >= 56) grade = 'B';
+            else if (percentage >= 51) grade = 'C+';
+            else if (percentage >= 46) grade = 'C';
             else if (percentage >= 33) grade = 'D';
-            else grade = 'E';
+            else grade = 'F';
         }
 
         return {
@@ -281,7 +281,19 @@ const GenerateMarksheet = () => {
       // Overall Percentage
       const allMax = parseFloat(totals.unitTest.max || 0) + parseFloat(totals.term1.max || 0) + parseFloat(totals.term2.max || 0) + parseFloat(totals.annual.max || 0);
       const allObt = parseFloat(totals.unitTest.obt || 0) + parseFloat(totals.term1.obt || 0) + parseFloat(totals.term2.obt || 0) + parseFloat(totals.annual.obt || 0);
-      totals.aggregatePercentage = allMax > 0 ? ((allObt / allMax) * 100).toFixed(2) + '%' : '';
+      const aggPercentNum = allMax > 0 ? (allObt / allMax) * 100 : 0;
+      totals.aggregatePercentage = allMax > 0 ? aggPercentNum.toFixed(2) + '%' : '';
+      const computeGrade = (p) => {
+        if (p > 85) return 'A+';
+        if (p >= 76) return 'A';
+        if (p >= 66) return 'B+';
+        if (p >= 56) return 'B';
+        if (p >= 51) return 'C+';
+        if (p >= 46) return 'C';
+        if (p >= 33) return 'D';
+        return 'F';
+      };
+      totals.aggregateGrade = allMax > 0 ? computeGrade(aggPercentNum) : '';
 
 
       // --- Process Non-Scholastic Data ---

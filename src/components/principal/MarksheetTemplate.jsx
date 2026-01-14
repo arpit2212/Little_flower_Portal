@@ -1,10 +1,34 @@
 import React, { forwardRef } from 'react';
 import schoolLogo from '../../assets/school logo.jpg';
 
+const getNextClassLabel = (cls) => {
+  if (!cls) return '';
+  const match = String(cls).match(/(\d+)/);
+  if (!match) return cls;
+  const num = parseInt(match[1], 10) + 1;
+  const mod10 = num % 10;
+  const mod100 = num % 100;
+  let suffix = 'th';
+  if (mod10 === 1 && mod100 !== 11) suffix = 'st';
+  else if (mod10 === 2 && mod100 !== 12) suffix = 'nd';
+  else if (mod10 === 3 && mod100 !== 13) suffix = 'rd';
+  return `${num}${suffix}`;
+};
+
+const getDivisionFromPercentage = (percentage) => {
+  if (percentage == null || percentage === '') return '';
+  const p = Number(percentage);
+  if (Number.isNaN(p)) return '';
+  if (p >= 60) return '1st Division';
+  if (p >= 45) return '2nd Division';
+  if (p >= 33) return '3rd Division';
+  return 'Detained';
+};
+
 const MarksheetTemplate = forwardRef(({ data }, ref) => {
   if (!data) return null;
 
-  const { student, scholastic, totals, nonScholastic, session, result } = data;
+  const { student, scholastic, totals, nonScholastic, session } = data;
 
   // Pair Co-Curricular and Personal Attributes for side-by-side display
   const coCurricular = nonScholastic?.coCurricular || [];
@@ -20,8 +44,8 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
   }
 
   // Result handling
-  const division = typeof result === 'object' ? result.division : '';
-  const remark = typeof result === 'object' ? result.remark : '';
+  const division = getDivisionFromPercentage(totals?.annual?.percentage);
+  
 
   return (
     <div ref={ref}>
@@ -235,7 +259,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
 
       <div className="page">
         {/* Main Section with Black Border */}
-        <div className="main-section">
+        <div className="main-section" style={{  marginTop: '20px' }}>
             
             {/* Header Area */}
             <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px', borderBottom: '2px solid black', paddingBottom: '5px'}}>
@@ -304,7 +328,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
 
             {/* Student Info Section */}
-            <div className="student-info-section" style={{ marginBottom: '10px' }}>
+            <div className="student-info-section" style={{ marginBottom: '10px', marginTop: '20px' }}>
                 
                 {/* 1st Detail Box */}
                 <div style={{ display: 'flex', flexDirection: 'row',  }}>
@@ -415,8 +439,8 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>
                             Date of Birth
                         </span>
-                        <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold',marginLeft: '34px' }}>:</span>
-                        <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', marginLeft: '-16px' }}>
+                        <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold',marginLeft: '44px' }}>:</span>
+                        <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', marginLeft: '-5px' }}>
                             {(() => {
                                 const d = new Date(student.dob);
                                 return `${d.getDate()} ${d.toLocaleString('default', { month: 'long' })} ${d.getFullYear()}`;
@@ -453,91 +477,104 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
 
             {/* Scholastic Section */}
-            <div className="scholastic-section">
+            <div className="scholastic-section" style={{marginTop: '20px'}}>
                 <table className="main-table">
                     <thead>
                         <tr>
                             <th colSpan="10" style={{textAlign: 'left', padding: '5px'}}><b>SCHOLASTIC</b></th>
                         </tr>
                         <tr>
-                            <th rowSpan="2" className="subject-col">SUBJECT</th>
-                            <th colSpan="2">UNIT TEST</th>
-                            <th colSpan="2">I TERMINAL</th>
-                            <th colSpan="2">II TERMINAL</th>
-                            <th colSpan="2">ANNUAL EXAM</th>
+                            <th rowSpan="2" className="subject-col"style={{fontSize: '15px'}}>SUBJECT</th>
+                            <th colSpan="2" style={{fontSize: '15px'}}>UNIT TEST</th>
+                            <th colSpan="2" style={{fontSize: '15px'}}>I TERMINAL</th>
+                            <th colSpan="2" style={{fontSize: '15px'}}>II TERMINAL</th>
+                            <th colSpan="2" style={{fontSize: '15px'}}>ANNUAL EXAM</th>
                             <th rowSpan="2" style={{width: '80px'}}>ANNUAL<br/>AGGREGATE<br/><span style={{fontSize: '9pt'}}>(Grade)</span></th>
                         </tr>
                         <tr>
-                            <th>Max</th>
-                            <th>OBT</th>
-                            <th>Max</th>
-                            <th>OBT</th>
-                            <th>Max</th>
-                            <th>OBT</th>
-                            <th>Max</th>
-                            <th>OBT</th>
+                            <th style={{fontSize: '15px'}}>Max</th>
+                            <th style={{fontSize: '15px'}}>OBT</th>
+                            <th style={{fontSize: '15px'}}>Max</th>
+                            <th style={{fontSize: '15px'}}>OBT</th>
+                            <th style={{fontSize: '15px'}}>Max</th>
+                            <th style={{fontSize: '15px'}}>OBT</th>
+                            <th style={{fontSize: '15px'}}>Max</th>
+                            <th style={{fontSize: '15px'}}>OBT</th>
                         </tr>
                     </thead>
                     <tbody>
                         {scholastic.map((sub, index) => (
                             <tr key={index}>
                                 <td className="subject-col">{sub.subject}</td>
-                                <td>{sub.unitTest.max !== '-' ? sub.unitTest.max : ''}</td>
-                                <td>{sub.unitTest.obt !== '-' ? sub.unitTest.obt : ''}</td>
-                                <td>{sub.term1.max !== '-' ? sub.term1.max : ''}</td>
-                                <td>{sub.term1.obt !== '-' ? sub.term1.obt : ''}</td>
-                                <td>{sub.term2.max !== '-' ? sub.term2.max : ''}</td>
-                                <td>{sub.term2.obt !== '-' ? sub.term2.obt : ''}</td>
-                                <td>{sub.annual.max !== '-' ? sub.annual.max : ''}</td>
-                                <td>{sub.annual.obt !== '-' ? sub.annual.obt : ''}</td>
-                                <td>{sub.grade}</td>
+                                <td style={{fontSize: '15px'}}>{sub.unitTest.max !== '-' ? sub.unitTest.max : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.unitTest.obt !== '-' ? sub.unitTest.obt : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.term1.max !== '-' ? sub.term1.max : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.term1.obt !== '-' ? sub.term1.obt : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.term2.max !== '-' ? sub.term2.max : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.term2.obt !== '-' ? sub.term2.obt : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.annual.max !== '-' ? sub.annual.max : ''}</td>
+                                <td style={{fontSize: '15px'}}>{sub.annual.obt !== '-' ? sub.annual.obt : ''}</td>
+                                <td style={{fontSize: '15px'}}><b>{sub.grade}</b></td>
                             </tr>
                         ))}
                         {/* Grand Total Row */}
                         <tr style={{fontWeight: 'bold'}}>
                             <td className="subject-col">Grand Total</td>
-                            <td>{totals.unitTest.max}</td>
-                            <td>{totals.unitTest.obt}</td>
-                            <td>{totals.term1.max}</td>
-                            <td>{totals.term1.obt}</td>
-                            <td>{totals.term2.max}</td>
-                            <td>{totals.term2.obt}</td>
-                            <td>{totals.annual.max}</td>
-                            <td>{totals.annual.obt}</td>
-                            <td></td>
+                            <td style={{fontSize: '15px'}}>{totals.unitTest.max}</td>
+                            <td style={{fontSize: '15px'}}>{totals.unitTest.obt}</td>
+                            <td style={{fontSize: '15px'}}>{totals.term1.max}</td>
+                            <td style={{fontSize: '15px'}}>{totals.term1.obt}</td>
+                            <td style={{fontSize: '15px'}}>{totals.term2.max}</td>
+                            <td style={{fontSize: '15px'}}>{totals.term2.obt}</td>
+                            <td style={{fontSize: '15px'}}>{totals.annual.max}</td>
+                            <td style={{fontSize: '15px'}}>{totals.annual.obt}</td>
+                            <td style={{fontSize: '15px'}}>{totals.aggregateGrade}</td>
                         </tr>
                         {/* Percentage Row */}
                         <tr>
-                            <td className="subject-col" style={{fontWeight: 'bold'}}>Percentage %</td>
-                            <td colSpan="2"></td>
-                            <td colSpan="2"></td>
-                            <td colSpan="2"></td>
-                            <td colSpan="2"></td>
-                            <td style={{fontWeight: 'bold'}}>{totals.aggregatePercentage}</td>
+                            <td className="subject-col" style={{fontSize: '15px', fontWeight: 'bold'}}>Percentage %</td>
+                           <td colSpan="2" style={{fontSize: '15px'}}> <b> {totals.unitTest.percentage ? `${totals.unitTest.percentage}%` : ''}</b></td>
+                             <td colSpan="2" style={{fontSize: '15px'}}><b> {totals.term1.percentage ? `${totals.term1.percentage}%` : ''}</b></td>
+                               <td colSpan="2" style={{fontSize: '15px'}}><b> {totals.term2.percentage ? `${totals.term2.percentage}%` : ''}</b></td>
+                              <td colSpan="2" style={{fontSize: '15px'}}><b> {totals.annual.percentage ? `${totals.annual.percentage}%` : ''}</b></td>
+                            <td style={{fontSize: '15px', fontWeight: 'bold'}}>{totals.aggregatePercentage}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
             {/* Non Scholastic Section */}
-            <div className="non-scholastic-section">
+            <div className="non-scholastic-section" style={{marginTop: '20px'}}>
                 <table className="main-table">
                     <thead>
                         <tr>
-                            <th colSpan="5" style={{textAlign: 'left', padding: '5px'}}><b>NON SCHOLASTIC</b></th>
+                            <th colSpan="5" style={{fontSize: '15px', textAlign: 'left', padding: '5px'}}><b>NON SCHOLASTIC</b></th>
                         </tr>
                         <tr>
-                            <th colSpan="3" style={{width: '50%'}}>CO-CURRICULAR ACTIVITY</th>
-                            <th colSpan="2" style={{width: '50%'}}>PERSONAL ATTRIBUTES</th>
+                            <th colSpan="3" style={{fontSize: '15px', width: '50%'}}>CO-CURRICULAR ACTIVITY</th>
+                            <th colSpan="2" style={{fontSize: '15px', width: '50%'}}>PERSONAL ATTRIBUTES</th>
                         </tr>
                     </thead>
                     <tbody>
                         {activityRows.map((row, i) => (
                             <tr key={i}>
-                                <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>{row.co.name}</td>
-                                <td>{row.co.grade}</td>
-                                <td style={{textAlign: 'left', paddingLeft: '5px'}}>{row.pa.name}</td>
-                                <td>{row.pa.grade}</td>
+                                <td
+                                    colSpan="2"
+                                    style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                                >
+                                    {row.co.name}
+                                </td>
+                                <td style={{fontSize: '15px', width: '15%'}}>
+                                    <b>{row.co.grade}</b>
+                                </td>
+                                <td
+                                    style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                                >
+                                    {row.pa.name}
+                                </td>
+                                <td style={{fontSize: '15px', width: '15%'}}>
+                                    <b>{row.pa.grade}</b>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
@@ -545,49 +582,136 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
             
             {/* Final Result Section (Includes Health, Attendance, Result, Signatures) */}
-            <div className="final-result-section">
+            <div className="final-result-section" style={{marginTop: '-15px'}}>
                 <table className="main-table" style={{borderTop: 'none'}}>
                     <thead>
                         <tr>
-                            <th colSpan="3" style={{width: '50%'}}>HEALTH ASPECTS</th>
-                            <th colSpan="2" style={{width: '50%'}}>ATTENDANCE</th>
+                            <th colSpan="3" style={{fontSize: '15px', width: '50%'}}>HEALTH ASPECTS</th>
+                            <th colSpan="2" style={{fontSize: '15px', width: '50%'}}>ATTENDANCE</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>Height (in cm)</td>
-                            <td>{nonScholastic?.health?.height || ''}</td>
-                            <td style={{textAlign: 'left', paddingLeft: '5px'}}>Total Working Days</td>
-                            <td>{nonScholastic?.attendance?.workingDays || ''}</td>
+                        <tr >
+                            <td
+                                colSpan="2"
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Height (in cm)
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.health?.height || ''}</b>
+                            </td>
+                            <td
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Total Working Days
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.attendance?.workingDays || ''}</b>
+                            </td>
                         </tr>
                         <tr>
-                            <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>Weight (in kg)</td>
-                            <td>{nonScholastic?.health?.weight || ''}</td>
-                            <td style={{textAlign: 'left', paddingLeft: '5px'}}>Total Days Attended</td>
-                            <td>{nonScholastic?.attendance?.attended || ''}</td>
+                            <td
+                                colSpan="2"
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Weight (in kg)
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.health?.weight || ''}</b>
+                            </td>
+                            <td
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Total Days Attended
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.attendance?.attended || ''}</b>
+                            </td>
                         </tr>
                         <tr>
-                            <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>Physical Development</td>
-                            <td>{nonScholastic?.health?.physical || ''}</td>
-                            <td style={{textAlign: 'left', paddingLeft: '5px'}}>Percentage of Attendance</td>
-                            <td>{nonScholastic?.attendance?.percentage || ''}</td>
+                            <td
+                                colSpan="2"
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Physical Development
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.health?.physical || ''}</b>
+                            </td>
+                            <td
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                            >
+                                Percentage of Attendance
+                            </td>
+                            <td style={{fontSize: '15px', width: '15%'}}>
+                                <b>{nonScholastic?.attendance?.percentage || ''}</b>
+                            </td>
                         </tr>
                         <tr>
-                            <td colSpan="3" style={{textAlign: 'left', paddingLeft: '5px', height: '30px'}}>Division: - {division}</td>
-                            <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>Date of Issue: -</td>
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}>Division: - {division}</td>
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>Date of Issue: <b>13th March 2026</b> </td>
                         </tr>
                         <tr>
-                            <td colSpan="3" style={{textAlign: 'left', paddingLeft: '5px', height: '30px'}}>Remark: - {remark}</td>
-                            <td colSpan="2" style={{textAlign: 'left', paddingLeft: '5px'}}>School Reopen On: -</td>
+                            <td
+                                colSpan="3"
+                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}
+                            >
+                                Result:{' '}
+                                {totals?.aggregateGrade === 'F'
+                                    ? `Detain to same Class ${student.class}`
+                                    : `Pass & Congratulations! Promoted to next class ${getNextClassLabel(student.class)}`}
+                            </td>
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>School Reopen On: <b>23rd March 2026 </b></td> 
                         </tr>
                     </tbody>
                 </table>
 
-                <div className="signatures">
-                    <div className="sig-line">Class Teacher</div>
-                    <div className="sig-line">Principal</div>
-                    <div className="sig-line">Parent</div>
-                </div>
+                <table
+                    className="main-table "
+                    style={{marginTop: '0px'}}
+                >
+                    <tbody>
+                        <tr>
+                            <td
+                                style={{
+                                    height: '80px',
+                                    verticalAlign: 'bottom',
+                                    fontWeight: 'bold',
+                                    paddingBottom: '5px',
+                                    width: '25%',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                Teacher's Signature
+                            </td>
+                            <td
+                                style={{
+                                    height: '80px',
+                                    verticalAlign: 'bottom',
+                                    fontWeight: 'bold',
+                                    paddingBottom: '5px',
+                                    width: '25%',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                Parent's Signature
+                            </td>
+                            <td
+                                style={{
+                                    height: '140px',
+                                    verticalAlign: 'bottom',
+                                    fontWeight: 'bold',
+                                    paddingBottom: '5px',
+                                    width: '50%',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                Principal
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
         </div>
