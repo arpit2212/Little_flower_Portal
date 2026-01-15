@@ -1,6 +1,7 @@
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { GraduationCap, Menu } from 'lucide-react';
 import { useState } from 'react';
+import schoolLogo from '../../assets/school logo.jpg';
 
 const Navbar = () => {
   const { user } = useUser();
@@ -13,15 +14,15 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo and Title */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            <div className="bg-indigo-100 p-2 rounded-lg">
-              <GraduationCap className="w-6 h-6 sm:w-8 sm:h-8 text-indigo-600" />
-            </div>
+            {/* <div className="bg-white p-2 rounded-lg"> */}
+              <img src={schoolLogo} alt="School Logo" className="rounded-lg w-12 h-12 sm:w-16 sm:h-16 object-contain" />
+            {/* </div> */}
             <div className="hidden sm:block">
-              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Little Flower Dashboard</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-800">Little Flower School Dashboard</h1>
               <p className="text-xs text-gray-600 capitalize">{userRole} Portal</p>
             </div>
             <div className="sm:hidden">
-              <h1 className="text-base font-bold text-gray-800">Attendance</h1>
+              <h1 className="text-base font-bold text-gray-800">Little Flower School Dashboard</h1>
               <p className="text-xs text-gray-600 capitalize">{userRole}</p>
             </div>
           </div>
