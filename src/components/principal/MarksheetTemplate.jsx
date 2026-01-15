@@ -3,32 +3,70 @@ import schoolLogo from '../../assets/school logo.jpg';
 
 const getNextClassLabel = (cls) => {
   if (!cls) return '';
-  const match = String(cls).match(/(\d+)/);
+
+  const raw = String(cls).trim().toLowerCase();
+
+  if (raw === 'nursery') return 'LKG';
+  if (raw === 'lkg') return 'UKG';
+  if (raw === 'ukg') return '1st';
+
+  if (raw === 'kg1' || raw === 'kg 1' || raw === 'kg-i' || raw === 'kg i') {
+    return 'UKG';
+  }
+
+  if (raw === 'kg2' || raw === 'kg 2' || raw === 'kg-ii' || raw === 'kg ii') {
+    return '1st';
+  }
+
+  const match = raw.match(/(\d+)/);
   if (!match) return cls;
+
   const num = parseInt(match[1], 10) + 1;
   const mod10 = num % 10;
   const mod100 = num % 100;
+
   let suffix = 'th';
   if (mod10 === 1 && mod100 !== 11) suffix = 'st';
   else if (mod10 === 2 && mod100 !== 12) suffix = 'nd';
   else if (mod10 === 3 && mod100 !== 13) suffix = 'rd';
+
   return `${num}${suffix}`;
 };
 
-const getDivisionFromPercentage = (percentage) => {
-  if (percentage == null || percentage === '') return '';
-  const p = Number(percentage);
-  if (Number.isNaN(p)) return '';
-  if (p >= 60) return '1st Division';
-  if (p >= 45) return '2nd Division';
-  if (p >= 33) return '3rd Division';
-  return 'Detained';
+const getDivisionFromTotals = (totals) => {
+  if (!totals) return '';
+
+  const parseSafe = (v) => {
+    const n = parseFloat(v || 0);
+    return Number.isNaN(n) ? 0 : n;
+  };
+
+  const allMax =
+    parseSafe(totals.unitTest?.max) +
+    parseSafe(totals.term1?.max) +
+    parseSafe(totals.term2?.max) +
+    parseSafe(totals.annual?.max);
+
+  const allObt =
+    parseSafe(totals.unitTest?.obt) +
+    parseSafe(totals.term1?.obt) +
+    parseSafe(totals.term2?.obt) +
+    parseSafe(totals.annual?.obt);
+
+  if (allMax <= 0) return '';
+
+  const value = (allObt / allMax) * 100;
+
+  if (value >= 60) return <>1<sup>st</sup> Division</>;
+  if (value >= 45) return <>2<sup>nd</sup> Division</>;
+  if (value >= 33) return <>3<sup>rd</sup> Division</>;
+  return 'Detain';
 };
 
 const MarksheetTemplate = forwardRef(({ data }, ref) => {
   if (!data) return null;
 
-  const { student, scholastic, totals, nonScholastic, session } = data;
+  const { student, scholastic, totals, nonScholastic, session, result } = data;
 
   // Pair Co-Curricular and Personal Attributes for side-by-side display
   const coCurricular = nonScholastic?.coCurricular || [];
@@ -43,8 +81,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
     });
   }
 
-  // Result handling
-  const division = getDivisionFromPercentage(totals?.annual?.percentage);
+  const division = getDivisionFromTotals(totals);
   
 
   return (
@@ -328,7 +365,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
 
             {/* Student Info Section */}
-            <div className="student-info-section" style={{ marginBottom: '10px', marginTop: '20px' }}>
+            <div className="student-info-section" style={{ marginBottom: '10px', marginTop: '10px' }}>
                 
                 {/* 1st Detail Box */}
                 <div style={{ display: 'flex', flexDirection: 'row',  }}>
@@ -346,13 +383,13 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             
                         }}>
                             <span style={{ 
-                                color: '#18a303', 
-                                fontSize: '20px', 
+                                color: '#006ebe', 
+                                fontSize: '22px', 
                                 fontFamily: 'Arial, sans-serif', 
                                 fontWeight: 'bold', 
                                 marginLeft : '120px'
                             }}>
-                                RECORD OF ANNUAL ACADEMIC PERFORMANCE
+                                ANNUAL ACADEMIC RECORD
                             </span>
                             <span style={{ 
                                 color: '#c8201d', 
@@ -477,7 +514,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
 
             {/* Scholastic Section */}
-            <div className="scholastic-section" style={{marginTop: '20px'}}>
+            <div className="scholastic-section" style={{marginTop: '10px'}}>
                 <table className="main-table">
                     <thead>
                         <tr>
@@ -544,7 +581,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             </div>
 
             {/* Non Scholastic Section */}
-            <div className="non-scholastic-section" style={{marginTop: '20px'}}>
+            <div className="non-scholastic-section" style={{marginTop: '10px'}}>
                 <table className="main-table">
                     <thead>
                         <tr>
@@ -649,20 +686,24 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             </td>
                         </tr>
                         <tr>
-                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}>Division: - {division}</td>
-                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>Date of Issue: <b>13th March 2026</b> </td>
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}> <b>Division: {getDivisionFromTotals(totals)}</b></td>
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>
+                                Date of Issue: <b>13<sup>th</sup> March 2026</b>
+                            </td>
                         </tr>
                         <tr>
                             <td
                                 colSpan="3"
-                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}
+                                style={{fontSize: '13px', textAlign: 'left', paddingLeft: '5px', height: '30px', fontWeight: 'bold'}}
                             >
                                 Result:{' '}
                                 {totals?.aggregateGrade === 'F'
                                     ? `Detain to same Class ${student.class}`
                                     : `Pass & Congratulations! Promoted to next class ${getNextClassLabel(student.class)}`}
                             </td>
-                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>School Reopen On: <b>23rd March 2026 </b></td> 
+                            <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>
+                                School Reopen On: <b>23<sup>rd</sup> March 2026</b>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -685,7 +726,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             >
                                 Teacher's Signature
                             </td>
-                            <td
+                           <td
                                 style={{
                                     height: '80px',
                                     verticalAlign: 'bottom',

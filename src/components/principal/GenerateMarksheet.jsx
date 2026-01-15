@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { FileText, Search, Download, Loader2, Filter, Eye, X } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
 import MarksheetTemplate from './MarksheetTemplate';
 
 const GenerateMarksheet = () => {
@@ -89,35 +88,63 @@ const GenerateMarksheet = () => {
     }
   };
 
-  const generatePdfFromTemplate = async () => {
+  const openPrintWindowFromElement = (element, title) => {
+    if (!element) {
+      alert('Marksheet is not ready yet. Please try again.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=900,height=650');
+    if (!printWindow) {
+      alert('Please allow popups to print or save the marksheet.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { margin: 0; padding: 0; }
+          </style>
+        </head>
+        <body></body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    const cloned = printWindow.document.importNode(element, true);
+    printWindow.document.body.appendChild(cloned);
+
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
+  };
+
+  const generatePdfFromTemplate = (usePreview = false) => {
     if (!pdfData) return;
 
-    if (!templateRef.current) {
-      console.error("Template ref is missing despite pdfData being present");
+    let element = null;
+
+    if (usePreview && previewRef.current) {
+      element = previewRef.current;
+    } else if (templateRef.current) {
+      element = templateRef.current;
+    }
+
+    if (!element) {
+      console.error("No template element available for printing");
       setGeneratingPdf(null);
       setPdfData(null);
       alert("Error: Marksheet template could not be loaded.");
       return;
     }
 
-    const element = templateRef.current;
-    const opt = {
-      margin: 0,
-      filename: `${pdfData.student.name}_Marksheet.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 3, useCORS: true }, // Increased scale for better font rendering
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    try {
-      await html2pdf().set(opt).from(element).save();
-    } catch (error) {
-      console.error("PDF Generation Error:", error);
-      alert("Failed to generate PDF. Please try again.");
-    } finally {
-      setGeneratingPdf(null);
-      setPdfData(null); // Reset after generation
-    }
+    openPrintWindowFromElement(element, `${pdfData.student.name}_Marksheet`);
+    setGeneratingPdf(null);
+    setPdfData(null);
   };
 
   const prepareMarksheetData = async (student, mode = 'pdf') => {
@@ -503,7 +530,7 @@ const GenerateMarksheet = () => {
                         >
                           {generatingPdf === student.id ? (
                             <>
-                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
                               Generating...
                             </>
                           ) : (
@@ -548,13 +575,12 @@ const GenerateMarksheet = () => {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                      setPreviewMode(false);
-                      setTimeout(() => generatePdfFromTemplate(), 100);
+                      generatePdfFromTemplate(true);
                   }}
                   className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
                 >
                   <Download className="h-4 w-4 mr-1" />
-                  Download PDF
+                  Print / Save as PDF
                 </button>
                 <button
                   onClick={() => setShowPreviewModal(false)}
@@ -566,7 +592,7 @@ const GenerateMarksheet = () => {
             </div>
             <div className="flex-1 overflow-auto p-4 bg-gray-100 flex justify-center">
               <div className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
-                <MarksheetTemplate data={pdfData} />
+                <MarksheetTemplate data={pdfData} ref={previewRef} />
               </div>
             </div>
           </div>
