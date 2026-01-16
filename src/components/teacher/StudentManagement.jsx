@@ -20,6 +20,9 @@ const StudentManagement = () => {
   const [uploadErrors, setUploadErrors] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [bulkImages, setBulkImages] = useState([]);
+  const [photoFolderFiles, setPhotoFolderFiles] = useState([]);
+  const [photoFolderUploading, setPhotoFolderUploading] = useState(false);
+  const [photoFolderSummary, setPhotoFolderSummary] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [formData, setFormData] = useState({
@@ -221,6 +224,104 @@ const StudentManagement = () => {
       .getPublicUrl(filePath);
 
     return data.publicUrl;
+  };
+
+  const handlePhotoFolderChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    setPhotoFolderFiles(files);
+  };
+
+  const handleBulkPhotoUpload = async () => {
+    if (!selectedClass) {
+      alert('Please select a class first.');
+      return;
+    }
+
+    if (photoFolderFiles.length === 0) {
+      alert('Please select a folder with student photos first.');
+      return;
+    }
+
+    setPhotoFolderUploading(true);
+    setPhotoFolderSummary(null);
+
+    try {
+      const { data: classStudents, error: classStudentsError } = await supabase
+        .from('students')
+        .select('id, scholar_number')
+        .eq('class_id', selectedClass);
+
+      if (classStudentsError) {
+        throw classStudentsError;
+      }
+
+      const studentsByScholar = new Map();
+      (classStudents || []).forEach((s) => {
+        if (s.scholar_number) {
+          studentsByScholar.set(String(s.scholar_number).trim(), s.id);
+        }
+      });
+
+      let updatedCount = 0;
+      let skippedNoMatch = 0;
+      let failedCount = 0;
+
+      for (let i = 0; i < photoFolderFiles.length; i++) {
+        const file = photoFolderFiles[i];
+        const baseName = file.name.split('.').slice(0, -1).join('.') || file.name;
+        const scholarKey = baseName.trim();
+
+        const studentId = studentsByScholar.get(scholarKey);
+        if (!studentId) {
+          skippedNoMatch++;
+          continue;
+        }
+
+        try {
+          const imageUrl = await uploadStudentImage(file);
+          if (!imageUrl) {
+            failedCount++;
+            continue;
+          }
+
+          const { error: updateError } = await supabase
+            .from('students')
+            .update({ profile_image: imageUrl })
+            .eq('id', studentId);
+
+          if (updateError) {
+            failedCount++;
+          } else {
+            updatedCount++;
+          }
+        } catch (err) {
+          console.error('Error updating photo for scholar:', scholarKey, err);
+          failedCount++;
+        }
+      }
+
+      setPhotoFolderSummary({
+        totalFiles: photoFolderFiles.length,
+        updatedCount,
+        skippedNoMatch,
+        failedCount
+      });
+
+      alert(
+        `Photo upload completed:\n` +
+        `- Total files: ${photoFolderFiles.length}\n` +
+        `- Updated photos: ${updatedCount}\n` +
+        `- No matching scholar number: ${skippedNoMatch}\n` +
+        `- Failed updates: ${failedCount}`
+      );
+
+      await fetchStudents();
+    } catch (error) {
+      console.error('Error in bulk photo upload:', error);
+      alert('Error uploading photos. Please try again.');
+    } finally {
+      setPhotoFolderUploading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -504,30 +605,79 @@ const StudentManagement = () => {
           return;
         }
 
-        // Validate and map the data
         const mappedData = [];
         const errors = [];
 
-        // Valid caste values (common Indian caste categories)
-        // Mapped to DB values: Gen, OBC, SC, ST, NA
         const validCastes = ['General', 'Gen', 'OBC', 'SC', 'ST', 'Other', 'NA', 'General Category', 'Other Backward Class', 'Scheduled Caste', 'Scheduled Tribe'];
         
-        // Valid RTE values
-        // Mapped to DB values: RTE, no
         const validRTE = ['Yes', 'No', 'yes', 'no', 'YES', 'NO', 'RTE', 'rte'];
         
         const validGender = ['girl', 'boy', 'others'];
+
+        const normalizeDate = (value) => {
+          if (!value) return null;
+          if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            const year = value.getFullYear();
+            const month = String(value.getMonth() + 1).padStart(2, '0');
+            const day = String(value.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          }
+          if (typeof value === 'number') {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+            if (!Number.isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            }
+          }
+          if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed === '') return null;
+            const dotMatch = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+            if (dotMatch) {
+              const day = dotMatch[1];
+              const month = dotMatch[2];
+              const year = dotMatch[3];
+              return `${year}-${month}-${day}`;
+            }
+            const dashMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (dashMatch) {
+              const day = dashMatch[1];
+              const month = dashMatch[2];
+              const year = dashMatch[3];
+              return `${year}-${month}-${day}`;
+            }
+            const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (slashMatch) {
+              const day = slashMatch[1];
+              const month = slashMatch[2];
+              const year = slashMatch[3];
+              return `${year}-${month}-${day}`;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+              return trimmed;
+            }
+            const parsed = new Date(trimmed);
+            if (!Number.isNaN(parsed.getTime())) {
+              const year = parsed.getFullYear();
+              const month = String(parsed.getMonth() + 1).padStart(2, '0');
+              const day = String(parsed.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            }
+          }
+          return null;
+        };
 
         jsonData.forEach((row, index) => {
           const rowNum = index + 2; // +2 because index is 0-based and we have header row
           const errorsForRow = [];
 
-          // Required fields validation
           if (!row['Student Name'] && !row['student_name']) {
             errorsForRow.push(`Row ${rowNum}: Student Name is required`);
           }
 
-          // Validate caste field
           const casteValue = row['Caste'] || row['caste'] || '';
           if (casteValue && casteValue.trim() !== '') {
             // Normalize caste value for comparison
@@ -542,7 +692,6 @@ const StudentManagement = () => {
             }
           }
 
-          // Validate RTE field
           const rteValue = row['RTE'] || row['rte'] || '';
           if (rteValue && rteValue.trim() !== '') {
             const normalizedRTE = rteValue.trim();
@@ -562,11 +711,9 @@ const StudentManagement = () => {
           if (errorsForRow.length > 0) {
             errors.push(...errorsForRow);
           } else {
-            // Normalize caste value
             let normalizedCasteValue = 'NA';
             if (casteValue && casteValue.trim() !== '') {
               const normalizedCaste = casteValue.trim();
-              // Map to standard values
               if (normalizedCaste.toLowerCase().includes('general') || normalizedCaste.toLowerCase() === 'gen') {
                 normalizedCasteValue = 'Gen';
               } else if (normalizedCaste.toLowerCase().includes('obc') || normalizedCaste.toLowerCase().includes('other backward')) {
@@ -606,14 +753,13 @@ const StudentManagement = () => {
               }
             }
 
-            // Map Excel columns to database fields
             const studentData = {
               name: row['Student Name'] || row['student_name'] || '',
               student_name: row['Student Name'] || row['student_name'] || '',
               roll_number: '0',
               scholar_number: row['Scholar Number'] || row['scholar_number'] || null,
               samagra_id: row['Samagra ID'] || row['samagra_id'] || null,
-              date_of_birth: row['Date of Birth'] || row['date_of_birth'] || null,
+              date_of_birth: normalizeDate(row['Date of Birth'] || row['date_of_birth']),
               session: row['Session'] || row['session'] || null,
               father_name: row['Father Name'] || row['father_name'] || null,
               mother_name: row['Mother Name'] || row['mother_name'] || null,
@@ -629,8 +775,8 @@ const StudentManagement = () => {
               appar_id: row['Appar ID'] || row['appar_id'] || null,
               gender: normalizedGenderValue || null,
               house: row['House'] || row['house'] || null,
-              date_of_admission: row['Date of Admission'] || row['date_of_admission'] || null,
-              admission_date: row['Date of Admission'] || row['date_of_admission'] || null,
+              date_of_admission: normalizeDate(row['Date of Admission'] || row['date_of_admission']),
+              admission_date: normalizeDate(row['Date of Admission'] || row['date_of_admission']),
               class_id: selectedClass,
               profile_image: row['Profile Image URL'] || row['profile_image_url'] || row['Profile Image'] || row['profile_image'] || null
             };
@@ -681,6 +827,8 @@ const StudentManagement = () => {
 
       for (let i = 0; i < uploadPreview.length; i++) {
         const student = uploadPreview[i];
+        const tempRollNumber = `TMP${Date.now()}_${i}`;
+        student.roll_number = tempRollNumber;
         
         // Check for image upload if profile_image is a filename
         if (student.profile_image && !student.profile_image.startsWith('http') && bulkImages.length > 0) {
@@ -889,6 +1037,49 @@ const StudentManagement = () => {
               </div>
             </div>
 
+            <div className="border-t border-gray-200 pt-4">
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">Bulk Update Photos by Scholar Number</h4>
+              <p className="text-xs text-gray-600 mb-2">
+                Select a folder of images. Each image file name must be the scholar number of the student (for example: <span className="font-mono">SCH001.jpg</span>).
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <input
+                  type="file"
+                  multiple
+                  onChange={handlePhotoFolderChange}
+                  className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                  webkitdirectory="true"
+                  directory="true"
+                />
+                <button
+                  type="button"
+                  onClick={handleBulkPhotoUpload}
+                  disabled={photoFolderUploading || photoFolderFiles.length === 0 || !selectedClass}
+                  className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-xs sm:text-sm"
+                >
+                  {photoFolderUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Uploading Photos...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Student Photo</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {photoFolderSummary && (
+                <div className="mt-2 text-[11px] text-gray-600">
+                  <p>Total files: {photoFolderSummary.totalFiles}</p>
+                  <p>Updated photos: {photoFolderSummary.updatedCount}</p>
+                  <p>No matching scholar number: {photoFolderSummary.skippedNoMatch}</p>
+                  <p>Failed updates: {photoFolderSummary.failedCount}</p>
+                </div>
+              )}
+            </div>
+
             {uploadErrors.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-red-800 mb-2">Errors Found ({uploadErrors.length}):</h4>
@@ -912,16 +1103,48 @@ const StudentManagement = () => {
                         <tr>
                           <th className="px-2 py-1 text-left">Name</th>
                           <th className="px-2 py-1 text-left">Scholar No.</th>
+                          <th className="px-2 py-1 text-left">Samagra ID</th>
+                          <th className="px-2 py-1 text-left">DOB</th>
+                          <th className="px-2 py-1 text-left">Session</th>
+                          <th className="px-2 py-1 text-left">Father Name</th>
+                          <th className="px-2 py-1 text-left">Mother Name</th>
                           <th className="px-2 py-1 text-left">Mobile</th>
+                          <th className="px-2 py-1 text-left">Other Contact</th>
+                          <th className="px-2 py-1 text-left">Family ID</th>
+                          <th className="px-2 py-1 text-left">Address</th>
+                          <th className="px-2 py-1 text-left">Aadhar</th>
+                          <th className="px-2 py-1 text-left">Gender</th>
+                          <th className="px-2 py-1 text-left">Caste</th>
+                          <th className="px-2 py-1 text-left">RTE</th>
+                          <th className="px-2 py-1 text-left">PEN</th>
+                          <th className="px-2 py-1 text-left">Appar ID</th>
+                          <th className="px-2 py-1 text-left">House</th>
+                          <th className="px-2 py-1 text-left">Admission Date</th>
                           <th className="px-2 py-1 text-left">Image</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {uploadPreview.slice(0, 10).map((student, index) => (
+                        {uploadPreview.map((student, index) => (
                           <tr key={index}>
                             <td className="px-2 py-1">{student.name || student.student_name}</td>
                             <td className="px-2 py-1">{student.scholar_number || '-'}</td>
+                            <td className="px-2 py-1">{student.samagra_id || '-'}</td>
+                            <td className="px-2 py-1">{student.date_of_birth || '-'}</td>
+                            <td className="px-2 py-1">{student.session || '-'}</td>
+                            <td className="px-2 py-1">{student.father_name || '-'}</td>
+                            <td className="px-2 py-1">{student.mother_name || '-'}</td>
                             <td className="px-2 py-1">{student.mobile_no || '-'}</td>
+                            <td className="px-2 py-1">{student.other_no || '-'}</td>
+                            <td className="px-2 py-1">{student.family_id || '-'}</td>
+                            <td className="px-2 py-1">{student.address || '-'}</td>
+                            <td className="px-2 py-1">{student.aadhar_number || '-'}</td>
+                            <td className="px-2 py-1">{student.gender || '-'}</td>
+                            <td className="px-2 py-1">{student.caste || '-'}</td>
+                            <td className="px-2 py-1">{student.rte || '-'}</td>
+                            <td className="px-2 py-1">{student.pen_number || '-'}</td>
+                            <td className="px-2 py-1">{student.appar_id || '-'}</td>
+                            <td className="px-2 py-1">{student.house || '-'}</td>
+                            <td className="px-2 py-1">{student.admission_date || '-'}</td>
                             <td className="px-2 py-1">
                               {student.profile_image ? (
                                 student.profile_image.startsWith('http') ? 
@@ -936,11 +1159,6 @@ const StudentManagement = () => {
                         ))}
                       </tbody>
                     </table>
-                    {uploadPreview.length > 10 && (
-                      <p className="text-xs text-gray-600 mt-2 text-center">
-                        ... and {uploadPreview.length - 10} more student(s)
-                      </p>
-                    )}
                   </div>
                 </div>
 
