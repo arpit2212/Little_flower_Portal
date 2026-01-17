@@ -57,10 +57,50 @@ const getDivisionFromTotals = (totals) => {
 
   const value = (allObt / allMax) * 100;
 
-  if (value >= 60) return <>1<sup>st</sup> Division</>;
-  if (value >= 45) return <>2<sup>nd</sup> Division</>;
-  if (value >= 33) return <>3<sup>rd</sup> Division</>;
+  if (value >= 60) return <>1<sup>st</sup> </>;
+  if (value >= 45) return <>2<sup>nd</sup> </>;
+  if (value >= 33) return <>3<sup>rd</sup> </>;
   return 'Detain';
+};
+
+const renderClassWithSup = (cls) => {
+  if (!cls) return '';
+  const raw = String(cls).trim().toLowerCase();
+  if (raw === 'nursery') return 'Nursery';
+  if (raw === 'lkg') return 'LKG';
+  if (raw === 'ukg') return 'UKG';
+  const isKg = raw.includes('kg');
+  const match = raw.match(/(\d+)/);
+  if (!match) return cls;
+  const num = parseInt(match[1], 10);
+  const mod10 = num % 10;
+  const mod100 = num % 100;
+  let suffix = 'th';
+  if (mod10 === 1 && mod100 !== 11) suffix = 'st';
+  else if (mod10 === 2 && mod100 !== 12) suffix = 'nd';
+  else if (mod10 === 3 && mod100 !== 13) suffix = 'rd';
+  return (
+    <>
+      {isKg ? 'KG' : ''}
+      {isKg ? '' : ''}
+      {num}
+      <sup>{suffix}</sup>
+    </>
+  );
+};
+
+const formatFatherName = (name) => {
+  const n = String(name || '').trim();
+  if (!n) return '';
+  if (/(^|\s)mr\.?\b/i.test(n)) return n;
+  return `Mr. ${n}`;
+};
+
+const formatMotherName = (name) => {
+  const n = String(name || '').trim();
+  if (!n) return '';
+  if (/(^|\s)mrs\.?\b/i.test(n)) return n;
+  return `Mrs. ${n}`;
 };
 
 const MarksheetTemplate = forwardRef(({ data }, ref) => {
@@ -99,7 +139,9 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
       <style dangerouslySetInnerHTML={{ __html: `
         @page {
             size: A4;
-            margin: 10mm;
+            margin: -2mm;
+            width : 210mm;
+            height : 300mm;
         }
         @font-face {
             font-family: 'Cambria';
@@ -284,7 +326,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
         .subject-col {
             text-align: left !important;
             padding-left: 5px !important;
-            width: 25%;
+            width: 18%;
         }
         
         /* Footer/Signatures */
@@ -439,7 +481,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                                 </span>
                                 <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>:</span>
                                 <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif' }}>
-                                    {student.fatherName}
+                                    {formatFatherName(student.fatherName)}
                                 </span>
                             </div>
 
@@ -450,7 +492,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                                 </span>
                                 <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>:</span>
                                 <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif' }}>
-                                    {student.motherName}
+                                    {formatMotherName(student.motherName)}
                                 </span>
                             </div>
                         </div>
@@ -502,7 +544,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         </span>
                         <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>:</span>
                         <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>
-                            {student.class}
+                            {renderClassWithSup(student.class)}
                         </span>
                         <span style={{ color: 'black', fontSize: '15px', fontFamily: 'Cambria, serif', fontWeight: 'bold' }}>
                             - Sec: A
@@ -526,6 +568,18 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             {/* Scholastic Section */}
             <div className="scholastic-section" style={{marginTop: '10px'}}>
                 <table className="main-table">
+                    <colgroup>
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '8%' }} />
+                        <col style={{ width: '9%' }} />
+                        <col style={{ width: '7%' }} />
+                        <col style={{ width: '8%' }} />
+                        <col style={{ width: '8%' }} />
+                        <col style={{ width: '8%' }} />
+                        <col style={{ width: '9%' }} />
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '11%' }} />
+                    </colgroup>
                     <thead>
                         <tr>
                             <th colSpan="10" style={{textAlign: 'left', padding: '10px'}}><b>SCHOLASTIC</b></th>
@@ -536,7 +590,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             <th colSpan="2" style={{fontSize: '15px'}}>I TERMINAL</th>
                             <th colSpan="2" style={{fontSize: '15px'}}>II TERMINAL</th>
                             <th colSpan="2" style={{fontSize: '15px'}}>ANNUAL EXAM</th>
-                            <th rowSpan="2" style={{width: '80px'}}>ANNUAL<br/>AGGREGATE<br/><span style={{fontSize: '9pt'}}>(Grade)</span></th>
+                            <th rowSpan="2" style={{width: '18%'}}>ANNUAL<br/>AGGREGATE<br/><span style={{fontSize: '9pt'}}>(Grade)</span></th>
                         </tr>
                         <tr style={{ padding: '10px'}}>
                             <th style={{fontSize: '15px'}}>Max</th>
@@ -597,6 +651,13 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             {/* Non Scholastic Section */}
             <div className="non-scholastic-section" style={{marginTop: '10px'}}>
                 <table className="main-table">
+                    <colgroup>
+                        <col style={{ width: '17.5%' }} />
+                        <col style={{ width: '17.5%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '35%' }} />
+                        <col style={{ width: '15%' }} />
+                    </colgroup>
                     <thead>
                         <tr>
                             <th colSpan="5" style={{fontSize: '15px', textAlign: 'left', padding: '5px'}}><b>NON SCHOLASTIC</b></th>
@@ -640,6 +701,13 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             {/* Final Result Section (Includes Health, Attendance, Result, Signatures) */}
             <div className="final-result-section" style={{marginTop: '-15px'}}>
                 <table className="main-table" style={{borderTop: 'none'}}>
+                    <colgroup>
+                        <col style={{ width: '17.5%' }} />
+                        <col style={{ width: '17.5%' }} />
+                        <col style={{ width: '15%' }} />
+                        <col style={{ width: '35%' }} />
+                        <col style={{ width: '15%' }} />
+                    </colgroup>
                     <thead>
                         <tr>
                             <th colSpan="3" style={{fontSize: '15px', width: '50%'}}>HEALTH ASPECTS</th>
@@ -736,6 +804,11 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                     className="main-table "
                     style={{marginTop: '0px'}}
                 >
+                    <colgroup>
+                        <col style={{ width: '25%' }} />
+                        <col style={{ width: '24.5%' }} />
+                        <col style={{ width: '50.5%' }} />
+                    </colgroup>
                     <tbody>
                         <tr>
                             <td
