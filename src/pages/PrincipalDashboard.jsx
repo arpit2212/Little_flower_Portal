@@ -10,6 +10,7 @@ import AssignTeacher from '../components/principal/AssignTeacher';
 import AttendanceReport from '../components/common/AttendanceReport';
 import ViewResults from '../components/principal/ViewResults';
 import GenerateMarksheet from '../components/principal/GenerateMarksheet';
+import StudentManagement from '../components/teacher/StudentManagement';
 
 const PrincipalDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -82,6 +83,7 @@ const PrincipalDashboard = () => {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/classes" element={<AllClassesView />} />
+                <Route path="/classes/:classId/students" element={<StudentManagement />} />
                 <Route path="/results" element={<ViewResults />} />
                 <Route path="/generate-marksheet" element={<GenerateMarksheet />} />
                 <Route path="/assign-teacher" element={<AssignTeacher />} />

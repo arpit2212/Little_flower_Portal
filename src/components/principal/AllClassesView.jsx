@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Users, BookOpen, TrendingUp, Search, Filter } from 'lucide-react';
+import { Users, BookOpen, TrendingUp, Search, Filter, X } from 'lucide-react';
 
 const AllClassesView = () => {
   const [classes, setClasses] = useState([]);
@@ -19,6 +19,9 @@ const AllClassesView = () => {
     house: '',
     rte: ''
   });
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [studentModalLoading, setStudentModalLoading] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -132,8 +135,32 @@ const AllClassesView = () => {
     }
   };
 
+  const openStudentModal = async (studentId) => {
+    setShowStudentModal(true);
+    setStudentModalLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .eq('id', studentId)
+        .single();
+      if (error) throw error;
+      const classInfo = classes.find((cls) => cls.id === data.class_id);
+      const merged = {
+        ...data,
+        class_name: classInfo ? classInfo.name : '',
+        class_session: classInfo ? classInfo.session : ''
+      };
+      setSelectedStudent(merged);
+    } catch (e) {
+      setSelectedStudent(null);
+    } finally {
+      setStudentModalLoading(false);
+    }
+  };
+
   const handleClassClick = (cls) => {
-    navigate(`/principal/classes/${cls.id}`);
+    navigate(`/principal/classes/${cls.id}/students`);
   };
 
   if (loading) {
@@ -275,7 +302,11 @@ const AllClassesView = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {searchResults.map((student) => (
-                    <tr key={student.id}>
+                    <tr
+                      key={student.id}
+                      onClick={() => openStudentModal(student.id)}
+                      className="hover:bg-gray-50 cursor-pointer"
+                    >
                       <td className="px-2 py-1">{student.roll_number || '-'}</td>
                       <td className="px-2 py-1">{student.student_name || student.name}</td>
                       <td className="px-2 py-1">{student.scholar_number || '-'}</td>
@@ -369,6 +400,123 @@ const AllClassesView = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {showStudentModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-900">Student Details</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedStudent(null);
+                }}
+                className="p-2 rounded-md hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+            <div className="p-4">
+              {studentModalLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                </div>
+              ) : selectedStudent ? (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    {selectedStudent.profile_image ? (
+                      <img
+                        src={selectedStudent.profile_image}
+                        alt={selectedStudent.name || selectedStudent.student_name}
+                        className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-lg font-bold">
+                        {(selectedStudent.name || selectedStudent.student_name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-gray-600">Class</p>
+                      <p className="text-base font-semibold text-gray-900">
+                        {selectedStudent.class_name || '-'}
+                        {selectedStudent.class_session ? ` - ${selectedStudent.class_session}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Name</span><span className="font-medium">{selectedStudent.name || selectedStudent.student_name || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Roll No</span><span className="font-medium">{selectedStudent.roll_number || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Scholar No</span><span className="font-medium">{selectedStudent.scholar_number || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Samagra ID</span><span className="font-medium">{selectedStudent.samagra_id || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Gender</span><span className="font-medium">{selectedStudent.gender || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">DOB</span><span className="font-medium">{selectedStudent.date_of_birth ? new Date(selectedStudent.date_of_birth).toLocaleDateString() : '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Session</span><span className="font-medium">{selectedStudent.session || selectedStudent.class_session || '-'}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Father</span><span className="font-medium">{selectedStudent.father_name || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Mother</span><span className="font-medium">{selectedStudent.mother_name || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Mobile</span><span className="font-medium">{selectedStudent.mobile_no || selectedStudent.parent_contact || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Other Contact</span><span className="font-medium">{selectedStudent.other_no || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Address</span><span className="font-medium">{selectedStudent.address || '-'}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Aadhar</span><span className="font-medium">{selectedStudent.aadhar_number || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">PEN No</span><span className="font-medium">{selectedStudent.pen_number || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Family ID</span><span className="font-medium">{selectedStudent.family_id || '-'}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Appar ID</span><span className="font-medium">{selectedStudent.appar_id || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">House</span><span className="font-medium">{selectedStudent.house || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Caste</span><span className="font-medium">{selectedStudent.caste || '-'}</span></div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">RTE</span><span className="font-medium">{selectedStudent.rte || '-'}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Admission Date</span><span className="font-medium">{selectedStudent.admission_date || selectedStudent.date_of_admission ? new Date(selectedStudent.admission_date || selectedStudent.date_of_admission).toLocaleDateString() : '-'}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600">Unable to load student details.</div>
+              )}
+            </div>
+            <div className="flex justify-end items-center gap-2 p-4 border-t">
+              {selectedStudent && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/principal/classes/${selectedStudent.class_id}/students`)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                  Open Class
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStudentModal(false);
+                  setSelectedStudent(null);
+                }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
