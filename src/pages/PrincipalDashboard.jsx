@@ -6,7 +6,6 @@ import Navbar from '../components/layout/Navbar';
 import ProtectedRoute from '../components/common/ProtectedRoute';
 import Dashboard from '../components/principal/Dashboard';
 import AllClassesView from '../components/principal/AllClassesView';
-import PrincipalClassStudents from '../components/principal/PrincipalClassStudents';
 import AssignTeacher from '../components/principal/AssignTeacher';
 import AttendanceReport from '../components/common/AttendanceReport';
 import ViewResults from '../components/principal/ViewResults';
@@ -83,7 +82,6 @@ const PrincipalDashboard = () => {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/classes" element={<AllClassesView />} />
-                <Route path="/classes/:classId" element={<PrincipalClassStudents />} />
                 <Route path="/results" element={<ViewResults />} />
                 <Route path="/generate-marksheet" element={<GenerateMarksheet />} />
                 <Route path="/assign-teacher" element={<AssignTeacher />} />

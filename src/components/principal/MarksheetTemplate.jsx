@@ -68,6 +68,16 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
 
   const { student, scholastic, totals, nonScholastic, session, result } = data;
 
+  const isClass1To5 = (() => {
+    if (!student || !student.class) return false;
+    const raw = String(student.class).trim().toLowerCase();
+    if (raw.includes('kg') || raw.includes('nursery')) return false;
+    const match = raw.match(/(\d+)/);
+    if (!match) return false;
+    const num = parseInt(match[1], 10);
+    return num >= 1 && num <= 5;
+  })();
+
   // Pair Co-Curricular and Personal Attributes for side-by-side display
   const coCurricular = nonScholastic?.coCurricular || [];
   const personalAttributes = nonScholastic?.personalAttributes || [];
@@ -102,7 +112,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
         .page {
             width: 210mm;
             min-height: 297mm;
-            padding: 10px;
+            padding: 0px;
             background: white;
             font-family: 'Cambria', serif;
             color: black;
@@ -296,7 +306,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
 
       <div className="page">
         {/* Main Section with Black Border */}
-        <div className="main-section" style={{  marginTop: '20px' }}>
+        <div className="main-section" style={{  margin: '20px' }}>
             
             {/* Header Area */}
             <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px', borderBottom: '2px solid black', paddingBottom: '5px'}}>
@@ -518,9 +528,9 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                 <table className="main-table">
                     <thead>
                         <tr>
-                            <th colSpan="10" style={{textAlign: 'left', padding: '5px'}}><b>SCHOLASTIC</b></th>
+                            <th colSpan="10" style={{textAlign: 'left', padding: '10px'}}><b>SCHOLASTIC</b></th>
                         </tr>
-                        <tr>
+                        <tr style={{ padding: '10px'}}>
                             <th rowSpan="2" className="subject-col"style={{fontSize: '15px'}}>SUBJECT</th>
                             <th colSpan="2" style={{fontSize: '15px'}}>UNIT TEST</th>
                             <th colSpan="2" style={{fontSize: '15px'}}>I TERMINAL</th>
@@ -528,7 +538,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             <th colSpan="2" style={{fontSize: '15px'}}>ANNUAL EXAM</th>
                             <th rowSpan="2" style={{width: '80px'}}>ANNUAL<br/>AGGREGATE<br/><span style={{fontSize: '9pt'}}>(Grade)</span></th>
                         </tr>
-                        <tr>
+                        <tr style={{ padding: '10px'}}>
                             <th style={{fontSize: '15px'}}>Max</th>
                             <th style={{fontSize: '15px'}}>OBT</th>
                             <th style={{fontSize: '15px'}}>Max</th>
@@ -541,8 +551,12 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                     </thead>
                     <tbody>
                         {scholastic.map((sub, index) => (
-                            <tr key={index}>
-                                <td className="subject-col">{sub.subject}</td>
+                            <tr  key={index}>
+                                <td style={{ 
+                                                                            ...(isClass1To5 ? { padding: '7px' } : { padding: '5px' })
+
+
+                                }}  className="subject-col">{sub.subject}</td>
                                 <td style={{fontSize: '15px'}}>{sub.unitTest.max !== '-' ? sub.unitTest.max : ''}</td>
                                 <td style={{fontSize: '15px'}}>{sub.unitTest.obt !== '-' ? sub.unitTest.obt : ''}</td>
                                 <td style={{fontSize: '15px'}}>{sub.term1.max !== '-' ? sub.term1.max : ''}</td>
@@ -569,7 +583,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         </tr>
                         {/* Percentage Row */}
                         <tr>
-                            <td className="subject-col" style={{fontSize: '15px', fontWeight: 'bold'}}>Percentage %</td>
+                            <td className="subject-col" style={{fontSize: '15px', fontWeight: 'bold', padding: '7px'}}>Percentage %</td>
                            <td colSpan="2" style={{fontSize: '15px'}}> <b> {totals.unitTest.percentage ? `${totals.unitTest.percentage}%` : ''}</b></td>
                              <td colSpan="2" style={{fontSize: '15px'}}><b> {totals.term1.percentage ? `${totals.term1.percentage}%` : ''}</b></td>
                                <td colSpan="2" style={{fontSize: '15px'}}><b> {totals.term2.percentage ? `${totals.term2.percentage}%` : ''}</b></td>
@@ -597,7 +611,12 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                             <tr key={i}>
                                 <td
                                     colSpan="2"
-                                    style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                                    style={{
+                                        fontSize: '15px',
+                                        textAlign: 'left',
+                                        width: '35%',
+                                        ...(isClass1To5 ? { padding: '7px' } : { padding: '0px', paddingLeft: '7px' })
+                                    }}
                                 >
                                     {row.co.name}
                                 </td>
@@ -631,7 +650,12 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         <tr >
                             <td
                                 colSpan="2"
-                                style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', width: '35%'}}
+                                style={{
+                                    fontSize: '15px',
+                                    textAlign: 'left',
+                                    width: '35%',
+                                    ...(isClass1To5 ? { padding: '7px' } : { padding: 0, paddingLeft: '7px' })
+                                }}
                             >
                                 Height (in cm)
                             </td>
@@ -694,7 +718,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         <tr>
                             <td
                                 colSpan="3"
-                                style={{fontSize: '13px', textAlign: 'left', paddingLeft: '5px', height: '30px', fontWeight: 'bold'}}
+                                style={{fontSize: '13px', textAlign: 'left', padding: '2px', height: '35px', fontWeight: 'bold'}}
                             >
                                 Result:{' '}
                                 {totals?.aggregateGrade === 'F'
