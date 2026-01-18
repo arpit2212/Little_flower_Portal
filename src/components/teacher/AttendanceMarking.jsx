@@ -6,6 +6,7 @@ import { Calendar, Save, CheckCircle } from 'lucide-react';
 
 const AttendanceMarking = () => {
   const { user } = useUser();
+  const userRole = user?.publicMetadata?.role;
   const [myClasses, setMyClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -30,10 +31,11 @@ const AttendanceMarking = () => {
 
   const fetchMyClasses = async () => {
     try {
-      const { data: classesData } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', user.id);
+      let query = supabase.from('classes').select('*');
+      if (userRole !== 'principal') {
+        query = query.eq('teacher_id', user.id);
+      }
+      const { data: classesData } = await query;
 
       setMyClasses(classesData || []);
       if (classesData && classesData.length > 0) {

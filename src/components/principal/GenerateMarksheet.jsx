@@ -9,10 +9,13 @@ const GenerateMarksheet = () => {
   const [selectedClass, setSelectedClass] = useState('');
   const [students, setStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [generatingPdf, setGeneratingPdf] = useState(null); // student id being processed
+  const [generatingPdf, setGeneratingPdf] = useState(null);
   const [pdfData, setPdfData] = useState(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const templateRef = useRef(null);
   const previewRef = useRef(null);
 
@@ -29,16 +32,15 @@ const GenerateMarksheet = () => {
   }, [selectedClass]);
 
   useEffect(() => {
-    // When pdfData is set, check mode
-    if (pdfData) {
-        if (previewMode) {
-            setShowPreviewModal(true);
-            setGeneratingPdf(null);
-        } else if (templateRef.current) {
-            generatePdfFromTemplate();
-        }
+    if (pdfData && !bulkMode) {
+      if (previewMode) {
+        setShowPreviewModal(true);
+        setGeneratingPdf(null);
+      } else if (templateRef.current) {
+        generatePdfFromTemplate();
+      }
     }
-  }, [pdfData, previewMode]);
+  }, [pdfData, previewMode, bulkMode]);
 
   const fetchClasses = async () => {
     try {
@@ -147,9 +149,7 @@ const GenerateMarksheet = () => {
     setPdfData(null);
   };
 
-  const prepareMarksheetData = async (student, mode = 'pdf') => {
-    setGeneratingPdf(student.id);
-    setPreviewMode(mode === 'preview');
+  const buildMarksheetData = async (student) => {
     try {
       const selectedClassData = classes.find(c => c.id === selectedClass);
       const classLevel = selectedClassData ? selectedClassData.name : '';
@@ -384,7 +384,7 @@ const GenerateMarksheet = () => {
           photoBase64 = await getBase64FromUrl(student.profile_image);
       }
 
-      setPdfData({
+      return {
         student: {
             name: student.name,
             fatherName: student.father_name,
@@ -410,10 +410,96 @@ const GenerateMarksheet = () => {
             remark: '-',
             status: "Pass & Congratulations! Promoted to Class " + (student.next_class || "Next")
         }
-      });
-
+      };
     } catch (error) {
       console.error('Error generating marksheet data:', error);
+      throw error;
+    }
+  };
+
+  const prepareMarksheetData = async (student, mode = 'pdf') => {
+    setGeneratingPdf(student.id);
+    setPreviewMode(mode === 'preview');
+    setBulkMode(false);
+    try {
+      const data = await buildMarksheetData(student);
+      setPdfData(data);
+    } catch (error) {
+      setGeneratingPdf(null);
+    }
+  };
+
+  const waitForTemplateRender = () => {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  };
+
+  const downloadClassMarksheets = async () => {
+    if (!selectedClass || students.length === 0 || bulkDownloading) {
+      return;
+    }
+
+    setBulkMode(true);
+    setBulkDownloading(true);
+    setBulkProgress({ current: 0, total: students.length });
+
+    try {
+      const printWindow = window.open('', '_blank', 'width=900,height=650');
+      if (!printWindow) {
+        alert('Please allow popups to generate marksheets.');
+        return;
+      }
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Class Marksheets</title>
+            <style>
+              body { margin: 0; padding: 0; }
+            </style>
+          </head>
+          <body></body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      for (let i = 0; i < students.length; i++) {
+        const student = students[i];
+        setBulkProgress({ current: i + 1, total: students.length });
+
+        try {
+          const data = await buildMarksheetData(student);
+          setPdfData(data);
+          await waitForTemplateRender();
+
+          const element = templateRef.current;
+          if (!element) {
+            continue;
+          }
+
+          const cloned = printWindow.document.importNode(element, true);
+          printWindow.document.body.appendChild(cloned);
+        } catch (studentError) {
+          console.error('Error generating marksheet for student:', student.id, studentError);
+        }
+      }
+
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    } catch (error) {
+      console.error('Error generating bulk marksheets:', error);
+      alert('Failed to generate bulk marksheets. Please try again.');
+    } finally {
+      setBulkDownloading(false);
+      setBulkProgress({ current: 0, total: 0 });
+      setBulkMode(false);
+      setPdfData(null);
       setGeneratingPdf(null);
     }
   };
@@ -435,6 +521,28 @@ const GenerateMarksheet = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Generate Marksheets</h1>
           <p className="text-gray-500 mt-1">Select a class and generate student marksheets</p>
+        </div>
+        <div className="mt-4 sm:mt-0">
+          <button
+            type="button"
+            onClick={downloadClassMarksheets}
+            disabled={!selectedClass || students.length === 0 || loading || bulkDownloading}
+            className="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium border border-transparent shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {bulkDownloading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                {bulkProgress.total > 0
+                  ? `Generating ${bulkProgress.current}/${bulkProgress.total}`
+                  : 'Generating...'}
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Download class marksheets (ZIP)
+              </>
+            )}
+          </button>
         </div>
       </div>
 
