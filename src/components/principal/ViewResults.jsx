@@ -66,9 +66,9 @@ const ViewResults = () => {
   const normalizeClassLevel = (className) => {
     if (!className) return '';
     const lowerName = className.toLowerCase();
-    if (lowerName.includes('nur')) return 'Nur';
-    if (lowerName.includes('lkg')) return 'LKG';
-    if (lowerName.includes('ukg')) return 'UKG';
+    if (lowerName.includes('nursery')) return 'Nursery';
+    if (lowerName.includes('kg1')) return 'KG1';
+    if (lowerName.includes('kg2')) return 'KG2';
     const match = lowerName.match(/\d+/);
     if (match) {
       const num = parseInt(match[0]);

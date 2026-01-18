@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { BookOpen, Save, Search, AlertCircle, CheckCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const EnterMarks = () => {
   const { user } = useUser();
@@ -63,9 +64,9 @@ const EnterMarks = () => {
     if (!className) return '';
     const lowerName = className.toLowerCase();
     
-    if (lowerName.includes('nur')) return 'Nur';
-    if (lowerName.includes('lkg')) return 'LKG';
-    if (lowerName.includes('ukg')) return 'UKG';
+    if (lowerName.includes('Nursery')) return 'Nursery';
+    if (lowerName.includes('kg1')) return 'KG1';
+    if (lowerName.includes('kg2')) return 'KG2';
     
     // Extract number
     const match = lowerName.match(/\d+/);
@@ -349,6 +350,464 @@ const EnterMarks = () => {
       }
   };
 
+  const handleDownloadTemplate = async () => {
+    if (!selectedClass || !selectedExamType) {
+      setMessage({ type: 'error', text: 'Please select Class and Exam Type first.' });
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const selectedClassData = classes.find(c => c.id === selectedClass);
+      if (!selectedClassData) {
+        throw new Error('Selected class not found.');
+      }
+
+      const classLevel = normalizeClassLevel(selectedClassData.name);
+      const academicYear = selectedClassData.session || '2024-2025';
+
+      const { data: studentsData, error: studentsError } = await supabase
+        .from('students')
+        .select('id, scholar_number, name, student_name, roll_number')
+        .eq('class_id', selectedClass);
+
+      if (studentsError) {
+        throw studentsError;
+      }
+
+      const sortedStudents = (studentsData || []).sort((a, b) => {
+        const rollA = parseInt(a.roll_number) || 0;
+        const rollB = parseInt(b.roll_number) || 0;
+        return rollA - rollB;
+      });
+
+      let subjectsForClass = subjects;
+
+      if (!subjectsForClass || subjectsForClass.length === 0) {
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('*')
+          .eq('class_level', classLevel);
+
+        if (subjectsError) {
+          throw subjectsError;
+        }
+
+        subjectsForClass = subjectsData || [];
+      }
+
+      if (!subjectsForClass || subjectsForClass.length === 0) {
+        throw new Error('No subjects configured for this class.');
+      }
+
+      const subjectIds = subjectsForClass.map(s => s.id);
+
+      const { data: configData, error: configError } = await supabase
+        .from('exam_configurations')
+        .select('*')
+        .eq('class_level', classLevel)
+        .eq('exam_type_id', selectedExamType)
+        .eq('academic_year', academicYear)
+        .in('subject_id', subjectIds);
+
+      if (configError) {
+        throw configError;
+      }
+
+      const configBySubjectId = new Map();
+      (configData || []).forEach(cfg => {
+        configBySubjectId.set(cfg.subject_id, cfg);
+      });
+
+      const configIds = (configData || []).map(cfg => cfg.id);
+      const marksByStudentAndConfig = new Map();
+
+      if (configIds.length > 0) {
+        const { data: marksData, error: marksError } = await supabase
+          .from('student_marks')
+          .select('student_id, exam_configuration_id, marks_obtained, is_absent')
+          .in('exam_configuration_id', configIds);
+
+        if (marksError) {
+          throw marksError;
+        }
+
+        (marksData || []).forEach(row => {
+          const key = `${row.student_id}-${row.exam_configuration_id}`;
+          marksByStudentAndConfig.set(key, row);
+        });
+      }
+
+      const templateRows = [];
+
+      if (sortedStudents.length === 0) {
+        const emptyRow = {
+          'Scholar No': '',
+          'Student Name': ''
+        };
+
+        subjectsForClass.forEach(subj => {
+          const maxHeader = `${subj.subject_name} - Max Marks`;
+          const obtainHeader = `${subj.subject_name} - Obtain Marks`;
+          emptyRow[maxHeader] = '';
+          emptyRow[obtainHeader] = '';
+        });
+
+        templateRows.push(emptyRow);
+      } else {
+        sortedStudents.forEach(student => {
+          const row = {
+            'Scholar No': student.scholar_number || '',
+            'Student Name': student.name || student.student_name || ''
+          };
+
+          subjectsForClass.forEach(subj => {
+            const maxHeader = `${subj.subject_name} - Max Marks`;
+            const obtainHeader = `${subj.subject_name} - Obtain Marks`;
+
+            const cfg = configBySubjectId.get(subj.id);
+
+            if (cfg) {
+              row[maxHeader] = cfg.max_marks;
+              const key = `${student.id}-${cfg.id}`;
+              const markRow = marksByStudentAndConfig.get(key);
+
+              if (markRow) {
+                row[obtainHeader] = markRow.is_absent ? 'AB' : (markRow.marks_obtained ?? '');
+              } else {
+                row[obtainHeader] = '';
+              }
+            } else {
+              row[maxHeader] = '';
+              row[obtainHeader] = '';
+            }
+          });
+
+          templateRows.push(row);
+        });
+      }
+
+      const ws = XLSX.utils.json_to_sheet(templateRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Marks');
+
+      const examTypeName = examTypes.find(et => et.id === selectedExamType)?.exam_name || 'Exam';
+      const safeClassName = (selectedClassData.name || 'Class').replace(/[^a-zA-Z0-9]/g, '_');
+      const safeExamTypeName = examTypeName.replace(/[^a-zA-Z0-9]/g, '_');
+
+      XLSX.writeFile(wb, `Marks_${safeClassName}_${safeExamTypeName}.xlsx`);
+
+      setMessage({ type: 'success', text: 'Excel template downloaded successfully.' });
+    } catch (error) {
+      console.error('Error generating Excel template:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to generate Excel template.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcelUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!selectedClass || !selectedExamType) {
+      setMessage({ type: 'error', text: 'Please select Class and Exam Type first.' });
+      return;
+    }
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      setMessage({ type: 'error', text: 'Please upload a valid Excel file (.xlsx or .xls).' });
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+        if (jsonData.length === 0) {
+          throw new Error('The Excel file is empty. Please check your file.');
+        }
+
+        const headers = Object.keys(jsonData[0] || {});
+        const subjectMetas = [];
+
+        headers.forEach(header => {
+          if (header.endsWith(' - Obtain Marks')) {
+            const subjectName = header.replace(' - Obtain Marks', '').trim();
+            const maxKey = `${subjectName} - Max Marks`;
+            subjectMetas.push({
+              subjectName,
+              obtainKey: header,
+              maxKey
+            });
+          }
+        });
+
+        if (subjectMetas.length === 0) {
+          throw new Error('No subject columns found in Excel file. Please use the provided template.');
+        }
+
+        const selectedClassData = classes.find(c => c.id === selectedClass);
+        if (!selectedClassData) {
+          throw new Error('Selected class not found.');
+        }
+
+        const classLevel = normalizeClassLevel(selectedClassData.name);
+        const academicYear = selectedClassData.session || '2024-2025';
+
+        let subjectsForClass = subjects;
+
+        if (!subjectsForClass || subjectsForClass.length === 0) {
+          const { data: subjectsData, error: subjectsError } = await supabase
+            .from('subjects')
+            .select('*')
+            .eq('class_level', classLevel);
+
+          if (subjectsError) {
+            throw subjectsError;
+          }
+
+          subjectsForClass = subjectsData || [];
+        }
+
+        const subjectRecords = subjectMetas.map(meta => {
+          const subj = subjectsForClass.find(s => s.subject_name === meta.subjectName);
+          if (!subj) {
+            throw new Error(`Subject '${meta.subjectName}' not found for this class.`);
+          }
+          return {
+            ...meta,
+            subjectId: subj.id
+          };
+        });
+
+        const { data: studentsData, error: studentsError } = await supabase
+          .from('students')
+          .select('id, scholar_number')
+          .eq('class_id', selectedClass);
+
+        if (studentsError) {
+          throw studentsError;
+        }
+
+        const studentMap = new Map();
+        (studentsData || []).forEach(s => {
+          if (s.scholar_number) {
+            studentMap.set(String(s.scholar_number).trim(), s.id);
+          }
+        });
+
+        if (studentMap.size === 0) {
+          throw new Error('No students found for selected class.');
+        }
+
+        const subjectIds = subjectRecords.map(sr => sr.subjectId);
+
+        const { data: existingConfigs, error: configError } = await supabase
+          .from('exam_configurations')
+          .select('*')
+          .eq('class_level', classLevel)
+          .eq('exam_type_id', selectedExamType)
+          .eq('academic_year', academicYear)
+          .in('subject_id', subjectIds);
+
+        if (configError) {
+          throw configError;
+        }
+
+        const configBySubjectId = new Map();
+        (existingConfigs || []).forEach(cfg => {
+          configBySubjectId.set(cfg.subject_id, cfg);
+        });
+
+        const configsToCreate = [];
+        const subjectMaxMap = new Map();
+
+        subjectRecords.forEach(sr => {
+          const existingCfg = configBySubjectId.get(sr.subjectId);
+          if (existingCfg) {
+            subjectMaxMap.set(sr.subjectId, existingCfg.max_marks);
+          } else {
+            let maxValue = null;
+            jsonData.forEach(row => {
+              const cell = row[sr.maxKey];
+              if (cell !== undefined && cell !== null && String(cell).trim() !== '') {
+                const num = Number(cell);
+                if (!Number.isNaN(num)) {
+                  maxValue = num;
+                }
+              }
+            });
+            if (!maxValue) {
+              throw new Error(`Max Marks missing for subject '${sr.subjectName}'. Please fill '${sr.maxKey}' column.`);
+            }
+            subjectMaxMap.set(sr.subjectId, maxValue);
+            configsToCreate.push({
+              class_level: classLevel,
+              subject_id: sr.subjectId,
+              exam_type_id: selectedExamType,
+              max_marks: maxValue,
+              academic_year: academicYear
+            });
+          }
+        });
+
+        if (configsToCreate.length > 0) {
+          const { data: newConfigs, error: createConfigError } = await supabase
+            .from('exam_configurations')
+            .insert(configsToCreate)
+            .select();
+
+          if (createConfigError) {
+            throw createConfigError;
+          }
+
+          (newConfigs || []).forEach(cfg => {
+            configBySubjectId.set(cfg.subject_id, cfg);
+          });
+        }
+
+        let teacherId = null;
+
+        const { data: teacherByClerk } = await supabase
+          .from('teachers')
+          .select('id')
+          .eq('clerk_user_id', user.id)
+          .maybeSingle();
+
+        if (teacherByClerk) {
+          teacherId = teacherByClerk.id;
+        } else {
+          const { data: teacherByEmail } = await supabase
+            .from('teachers')
+            .select('id')
+            .eq('email', user.primaryEmailAddress.emailAddress)
+            .maybeSingle();
+
+          if (teacherByEmail) {
+            teacherId = teacherByEmail.id;
+          }
+        }
+
+        if (!teacherId) {
+          throw new Error('Teacher record not found. Please contact administrator.');
+        }
+
+        const marksToUpsert = [];
+
+        jsonData.forEach((row, index) => {
+          const scholarRaw = row['Scholar No'] ?? row['Scholar Number'] ?? '';
+          const scholarKey = String(scholarRaw).trim();
+          if (!scholarKey) {
+            return;
+          }
+
+          const studentId = studentMap.get(scholarKey);
+          if (!studentId) {
+            return;
+          }
+
+          subjectRecords.forEach(sr => {
+            const obtainRaw = row[sr.obtainKey];
+            const maxRaw = row[sr.maxKey];
+
+            const hasMax = maxRaw !== null && maxRaw !== undefined && String(maxRaw).trim() !== '';
+            const hasObtain = obtainRaw !== null && obtainRaw !== undefined && String(obtainRaw).trim() !== '';
+
+            if (!hasMax && !hasObtain) {
+              return;
+            }
+
+            let isAbsent = false;
+            let marksValue = null;
+
+            if (typeof obtainRaw === 'string') {
+              const trimmed = obtainRaw.trim();
+              if (trimmed === '') {
+                return;
+              }
+              if (['ab', 'AB', 'absent', 'ABSENT', 'a', 'A'].includes(trimmed)) {
+                isAbsent = true;
+                marksValue = null;
+              } else {
+                const num = Number(trimmed);
+                if (Number.isNaN(num)) {
+                  throw new Error(`Invalid marks value for student ${scholarKey}, subject ${sr.subjectName} (row ${index + 2}).`);
+                }
+                marksValue = num;
+              }
+            } else if (typeof obtainRaw === 'number') {
+              marksValue = obtainRaw;
+            } else if (obtainRaw === null || obtainRaw === undefined || obtainRaw === '') {
+              return;
+            }
+
+            const cfg = configBySubjectId.get(sr.subjectId);
+            if (!cfg) {
+              return;
+            }
+
+            const maxMarks = subjectMaxMap.get(sr.subjectId);
+            if (marksValue != null && maxMarks != null && marksValue > maxMarks) {
+              throw new Error(`Marks for student ${scholarKey}, subject ${sr.subjectName} exceed Max Marks.`);
+            }
+
+            marksToUpsert.push({
+              student_id: studentId,
+              exam_configuration_id: cfg.id,
+              marks_obtained: isAbsent ? null : (marksValue != null ? marksValue : null),
+              is_absent: isAbsent,
+              marked_by: teacherId
+            });
+          });
+        });
+
+        if (marksToUpsert.length === 0) {
+          throw new Error('No marks found in Excel file.');
+        }
+
+        const uniqueStudentCount = new Set(marksToUpsert.map(m => m.student_id)).size;
+        const uniqueConfigCount = new Set(marksToUpsert.map(m => m.exam_configuration_id)).size;
+        const confirmMessage = `You are about to upload marks for ${uniqueStudentCount} students and ${uniqueConfigCount} subjects (${marksToUpsert.length} entries). Do you want to continue?`;
+        const confirmed = window.confirm(confirmMessage);
+
+        if (!confirmed) {
+          setMessage({ type: 'error', text: 'Marks upload cancelled.' });
+          return;
+        }
+
+        const { error: upsertError } = await supabase
+          .from('student_marks')
+          .upsert(marksToUpsert, { onConflict: 'student_id, exam_configuration_id' });
+
+        if (upsertError) {
+          throw upsertError;
+        }
+
+        setMessage({ type: 'success', text: 'Marks uploaded successfully from Excel.' });
+      } catch (error) {
+        console.error('Error processing Excel file:', error);
+        setMessage({ type: 'error', text: error.message || 'Failed to process Excel file.' });
+      } finally {
+        setLoading(false);
+        e.target.value = '';
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -430,6 +889,32 @@ const EnterMarks = () => {
               )}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">Bulk Upload Marks via Excel</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Download the template for the selected Class and Exam Type, fill Max Marks and Obtained Marks for each subject, then upload the file to save all marks in one step.
+        </p>
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+          <button
+            onClick={handleDownloadTemplate}
+            disabled={loading || !selectedClass || !selectedExamType}
+            className="flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400"
+          >
+            Download Template
+          </button>
+          <label className={`flex items-center justify-center px-4 py-2 border border-dashed rounded-lg cursor-pointer ${loading || !selectedClass || !selectedExamType ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50'}`}>
+            <span>Select Excel File (.xlsx or .xls)</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleExcelUpload}
+              disabled={loading || !selectedClass || !selectedExamType}
+            />
+          </label>
         </div>
       </div>
 
