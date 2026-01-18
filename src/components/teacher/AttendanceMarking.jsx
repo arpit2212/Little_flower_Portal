@@ -3,6 +3,7 @@ import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { ATTENDANCE_STATUS, ATTENDANCE_STATUS_COLORS } from '../../lib/constants';
 import { Calendar, Save, CheckCircle } from 'lucide-react';
+import { logTeacherAction } from '../../lib/teacherLog';
 
 const AttendanceMarking = () => {
   const { user } = useUser();
@@ -16,6 +17,37 @@ const AttendanceMarking = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [alreadyMarked, setAlreadyMarked] = useState(false);
+  const [initialAttendance, setInitialAttendance] = useState({});
+
+  const isValidUuid = (v) => {
+    return typeof v === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  };
+
+  const resolveMarkerTeacherId = async () => {
+    const { data: byClerk } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('clerk_user_id', user.id)
+      .maybeSingle();
+    if (byClerk?.id) return byClerk.id;
+    const { data: byEmail } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('email', user.primaryEmailAddress?.emailAddress || '')
+      .maybeSingle();
+    if (byEmail?.id) return byEmail.id;
+    const { data: inserted } = await supabase
+      .from('teachers')
+      .insert([{
+        clerk_user_id: user.id,
+        name: user.fullName || user.firstName || 'User',
+        email: user.primaryEmailAddress?.emailAddress || ''
+      }])
+      .select('id')
+      .single();
+    return inserted.id;
+  };
 
   useEffect(() => {
     if (user) {
@@ -76,8 +108,7 @@ const AttendanceMarking = () => {
         const remarksMap = {};
         
         attendanceData.forEach((record) => {
-          // Find student using samagra_id since attendance table uses it as FK
-          const student = sortedStudents.find(s => s.samagra_id === record.samagra_id);
+          const student = sortedStudents.find(s => s.samagra_id === record.samagra_id || s.id === record.samagra_id);
           if (student) {
             attendanceMap[student.id] = record.status;
             remarksMap[student.id] = record.remarks || '';
@@ -86,6 +117,7 @@ const AttendanceMarking = () => {
         
         setAttendance(attendanceMap);
         setRemarks(remarksMap);
+        setInitialAttendance(attendanceMap);
       } else {
         setAlreadyMarked(false);
         const initialAttendance = {};
@@ -94,6 +126,7 @@ const AttendanceMarking = () => {
         });
         setAttendance(initialAttendance);
         setRemarks({});
+        setInitialAttendance(initialAttendance);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -123,20 +156,42 @@ const AttendanceMarking = () => {
     setSaving(true);
 
     try {
-      await supabase
-        .from('attendance')
-        .delete()
-        .eq('class_id', selectedClass)
-        .eq('date', selectedDate);
+      const selectedClassDataForName = myClasses.find(c => c.id === selectedClass);
+      const classLabel = selectedClassDataForName ? `${selectedClassDataForName.name}${selectedClassDataForName.session ? ' - ' + selectedClassDataForName.session : ''}` : selectedClass;
 
-      const attendanceRecords = students.map((student) => ({
-        samagra_id: student.samagra_id,
-        class_id: selectedClass,
-        date: selectedDate,
-        status: attendance[student.id] || ATTENDANCE_STATUS.PRESENT,
-        marked_by: user.id,
-        remarks: remarks[student.id] || null
-      }));
+      const candidateClassIds = Array.from(new Set(
+        students
+          .map(s => s.class_id)
+          .filter(cid => isValidUuid(cid))
+      ));
+      const deleteQuery = supabase.from('attendance').delete().eq('date', selectedDate);
+      if (isValidUuid(selectedClass)) {
+        await deleteQuery.eq('class_id', selectedClass);
+      } else if (candidateClassIds.length > 0) {
+        await deleteQuery.in('class_id', candidateClassIds);
+      } else {
+        await deleteQuery;
+      }
+
+      const teacherId = await resolveMarkerTeacherId();
+      const marker = isValidUuid(teacherId) ? teacherId : null;
+      const attendanceRecords = students.map((student) => {
+        const samagraOrStudentId = isValidUuid(student.samagra_id) ? student.samagra_id : student.id;
+        const classIdValue = isValidUuid(selectedClass)
+          ? selectedClass
+          : (isValidUuid(student.class_id) ? student.class_id : selectedClass);
+        const rec = {
+          samagra_id: samagraOrStudentId,
+          class_id: classIdValue,
+          date: selectedDate,
+          status: attendance[student.id] || ATTENDANCE_STATUS.PRESENT,
+          remarks: remarks[student.id] || null
+        };
+        if (marker) {
+          rec.marked_by = marker;
+        }
+        return rec;
+      });
 
       const { error } = await supabase
         .from('attendance')
@@ -146,6 +201,39 @@ const AttendanceMarking = () => {
 
       alert('Attendance saved successfully!');
       setAlreadyMarked(true);
+
+      const perStudentLogPromises = students.map(student => {
+        const studentId = student.id;
+        const oldStatus = initialAttendance[studentId] || ATTENDANCE_STATUS.PRESENT;
+        const newStatus = attendance[studentId] || ATTENDANCE_STATUS.PRESENT;
+
+        if (oldStatus === newStatus) {
+          return null;
+        }
+
+        const studentLabel = student.name || student.student_name || '';
+        const roll = student.roll_number || '-';
+        const scholar = student.scholar_number || '-';
+        const description = `Attendance for ${studentLabel} (Roll ${roll}, Scholar ${scholar}) on ${selectedDate} in ${classLabel}: ${oldStatus} -> ${newStatus}`;
+
+        return logTeacherAction(user, {
+          action: 'ATTENDANCE_STATUS_CHANGED',
+          entityType: 'attendance',
+          entityId: studentId,
+          description
+        });
+      }).filter(p => p !== null);
+
+      if (perStudentLogPromises.length > 0) {
+        await Promise.all(perStudentLogPromises);
+      }
+
+      await logTeacherAction(user, {
+        action: 'ATTENDANCE_SAVED',
+        entityType: 'attendance',
+        entityId: selectedClass,
+        description: `Saved attendance for ${classLabel} on ${selectedDate} for ${students.length} students`
+      });
     } catch (error) {
       console.error('Error saving attendance:', error);
       alert('Error saving attendance. Please try again.');

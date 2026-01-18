@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { SESSIONS } from '../../lib/constants';
 import { UserPlus, Edit2, Trash2, Search, X, Check, Upload, Download, FileSpreadsheet, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { logTeacherAction } from '../../lib/teacherLog';
 
 const StudentManagement = () => {
   const { user } = useUser();
+  const userRole = user?.publicMetadata?.role;
+  const { classId: routeClassId } = useParams();
   const [myClasses, setMyClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [students, setStudents] = useState([]);
@@ -23,6 +27,7 @@ const StudentManagement = () => {
   const [photoFolderFiles, setPhotoFolderFiles] = useState([]);
   const [photoFolderUploading, setPhotoFolderUploading] = useState(false);
   const [photoFolderSummary, setPhotoFolderSummary] = useState(null);
+  const photoFolderInputRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [formData, setFormData] = useState({
@@ -110,14 +115,19 @@ const StudentManagement = () => {
 
   const fetchMyClasses = async () => {
     try {
-      const { data: classesData } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', user.id);
+      let classesQuery = supabase.from('classes').select('*');
+      if (userRole !== 'principal') {
+        classesQuery = classesQuery.eq('teacher_id', user.id);
+      }
+      const { data: classesData } = await classesQuery;
 
       setMyClasses(classesData || []);
       if (classesData && classesData.length > 0) {
-        setSelectedClass(classesData[0].id);
+        if (routeClassId && classesData.some(c => c.id === routeClassId)) {
+          setSelectedClass(routeClassId);
+        } else {
+          setSelectedClass(classesData[0].id);
+        }
       }
     } catch (error) {
       console.error('Error fetching classes:', error);
@@ -212,7 +222,7 @@ const StudentManagement = () => {
 
     const { error: uploadError } = await supabase.storage
       .from('student-images')
-      .upload(filePath, file);
+      .upload(filePath, file, { upsert: true, contentType: file.type || 'image/jpeg' });
 
     if (uploadError) {
       console.error('Error uploading image:', uploadError);
@@ -307,6 +317,13 @@ const StudentManagement = () => {
         failedCount
       });
 
+      await logTeacherAction(user, {
+        action: 'STUDENT_PHOTOS_BULK_UPDATED',
+        entityType: 'student',
+        entityId: selectedClass,
+        description: `Bulk updated photos for class ${selectedClass}: total files ${photoFolderFiles.length}, updated ${updatedCount}, no match ${skippedNoMatch}, failed ${failedCount}`
+      });
+
       alert(
         `Photo upload completed:\n` +
         `- Total files: ${photoFolderFiles.length}\n` +
@@ -323,6 +340,15 @@ const StudentManagement = () => {
       setPhotoFolderUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (photoFolderInputRef.current) {
+      photoFolderInputRef.current.setAttribute('webkitdirectory', '');
+      photoFolderInputRef.current.setAttribute('directory', '');
+      photoFolderInputRef.current.setAttribute('multiple', '');
+      photoFolderInputRef.current.setAttribute('accept', 'image/*');
+    }
+  }, [photoFolderInputRef]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -409,6 +435,22 @@ const StudentManagement = () => {
 
       await reorderStudents(selectedClass);
 
+      if (editingStudent) {
+        await logTeacherAction(user, {
+          action: 'STUDENT_UPDATED',
+          entityType: 'student',
+          entityId: editingStudent.id,
+          description: `Updated student ${formData.name || formData.student_name || ''} in class ${selectedClass}`
+        });
+      } else {
+        await logTeacherAction(user, {
+          action: 'STUDENT_CREATED',
+          entityType: 'student',
+          entityId: null,
+          description: `Created student ${formData.name || formData.student_name || ''} in class ${selectedClass}`
+        });
+      }
+
       setFormData({
         name: '',
         student_name: '',
@@ -480,7 +522,7 @@ const StudentManagement = () => {
     setShowForm(true);
   };
 
-  const handleDelete = async (studentId) => {
+  const handleDelete = async (student) => {
     if (!confirm('Are you sure you want to delete this student? All attendance records will be deleted.')) {
       return;
     }
@@ -489,11 +531,18 @@ const StudentManagement = () => {
       const { error } = await supabase
         .from('students')
         .delete()
-        .eq('id', studentId);
+        .eq('id', student.id);
 
       if (error) throw error;
       
       await reorderStudents(selectedClass);
+
+      await logTeacherAction(user, {
+        action: 'STUDENT_DELETED',
+        entityType: 'student',
+        entityId: student.id,
+        description: `Deleted student ${student.name || student.student_name || ''} from class ${selectedClass}`
+      });
       
       fetchStudents();
     } catch (error) {
@@ -876,6 +925,13 @@ const StudentManagement = () => {
         alert(`Successfully imported ${successCount} student(s)!`);
       }
 
+      await logTeacherAction(user, {
+        action: 'STUDENTS_BULK_IMPORTED',
+        entityType: 'student',
+        entityId: selectedClass,
+        description: `Bulk imported ${successCount} students into class ${selectedClass} with ${errorCount} failures`
+      });
+
       // Reorder students after import
       await reorderStudents(selectedClass);
 
@@ -1048,8 +1104,7 @@ const StudentManagement = () => {
                   multiple
                   onChange={handlePhotoFolderChange}
                   className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                  webkitdirectory="true"
-                  directory="true"
+                  ref={photoFolderInputRef}
                 />
                 <button
                   type="button"
@@ -1762,7 +1817,7 @@ const StudentManagement = () => {
                     </td>
                     <td className="px-3 py-3 text-right sticky right-0 bg-white group-hover:bg-gray-50 z-10 whitespace-nowrap">
                       <div className="flex justify-end space-x-2">
-                        <button
+            <button
                           onClick={() => handleEdit(student)}
                           className="text-indigo-600 hover:text-indigo-800 transition-colors"
                           aria-label="Edit student"
@@ -1770,7 +1825,7 @@ const StudentManagement = () => {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(student.id)}
+                          onClick={() => handleDelete(student)}
                           className="text-red-600 hover:text-red-800 transition-colors"
                           aria-label="Delete student"
                         >

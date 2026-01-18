@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { UserPlus, Edit2, Trash2, Search, X, Check, Upload, Download, FileSpreadsheet, Filter, ArrowLeft } from 'lucide-react';
@@ -23,6 +23,7 @@ const PrincipalClassStudents = () => {
   const [photoFolderFiles, setPhotoFolderFiles] = useState([]);
   const [photoFolderUploading, setPhotoFolderUploading] = useState(false);
   const [photoFolderSummary, setPhotoFolderSummary] = useState(null);
+  const photoFolderInputRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [formData, setFormData] = useState({
@@ -201,7 +202,7 @@ const PrincipalClassStudents = () => {
 
     const { error: uploadError } = await supabase.storage
       .from('student-images')
-      .upload(filePath, file);
+      .upload(filePath, file, { upsert: true, contentType: file.type || 'image/jpeg' });
 
     if (uploadError) {
       console.error('Error uploading image:', uploadError);
@@ -307,6 +308,15 @@ const PrincipalClassStudents = () => {
       setPhotoFolderUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (photoFolderInputRef.current) {
+      photoFolderInputRef.current.setAttribute('webkitdirectory', '');
+      photoFolderInputRef.current.setAttribute('directory', '');
+      photoFolderInputRef.current.setAttribute('multiple', '');
+      photoFolderInputRef.current.setAttribute('accept', 'image/*');
+    }
+  }, [photoFolderInputRef]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -979,8 +989,7 @@ const PrincipalClassStudents = () => {
                   multiple
                   onChange={handlePhotoFolderChange}
                   className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                  webkitdirectory="true"
-                  directory="true"
+                  ref={photoFolderInputRef}
                 />
                 <button
                   type="button"

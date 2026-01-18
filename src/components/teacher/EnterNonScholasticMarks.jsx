@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
-import { Save, Search, AlertCircle, CheckCircle } from 'lucide-react';
+import { Save, Search, AlertCircle, CheckCircle, Check } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { logTeacherAction } from '../../lib/teacherLog';
 
 const EnterNonScholasticMarks = () => {
   const { user } = useUser();
+  const userRole = user?.publicMetadata?.role;
   const [loading, setLoading] = useState(false);
   const [classes, setClasses] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
@@ -20,9 +22,39 @@ const EnterNonScholasticMarks = () => {
   const [students, setStudents] = useState([]);
   const [marks, setMarks] = useState({}); // { student_id: { grade, numeric_value } }
   const [currentActivityData, setCurrentActivityData] = useState(null); // Metadata of selected activity
+  const [existingMarks, setExistingMarks] = useState({});
   
   const [viewMode, setViewMode] = useState('initial'); // initial, view, edit
   const [message, setMessage] = useState(null);
+  const [excelPreviewOpen, setExcelPreviewOpen] = useState(false);
+  const [excelPreviewEntries, setExcelPreviewEntries] = useState([]);
+  const [excelPreviewSummary, setExcelPreviewSummary] = useState(null);
+  const [excelUploading, setExcelUploading] = useState(false);
+
+  const resolveMarkerTeacherId = async () => {
+    const { data: byClerk } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('clerk_user_id', user.id)
+      .maybeSingle();
+    if (byClerk?.id) return byClerk.id;
+    const { data: byEmail } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('email', user.primaryEmailAddress?.emailAddress || '')
+      .maybeSingle();
+    if (byEmail?.id) return byEmail.id;
+    const { data: inserted } = await supabase
+      .from('teachers')
+      .insert([{
+        clerk_user_id: user.id,
+        name: user.fullName || user.firstName || 'User',
+        email: user.primaryEmailAddress?.emailAddress || ''
+      }])
+      .select('id')
+      .single();
+    return inserted.id;
+  };
 
   // Fetch initial data (Classes, Exam Types, Categories)
   useEffect(() => {
@@ -30,11 +62,11 @@ const EnterNonScholasticMarks = () => {
       if (!user) return;
       setLoading(true);
       try {
-        // Fetch classes assigned to teacher
-        const { data: classesData, error: classesError } = await supabase
-          .from('classes')
-          .select('*')
-          .eq('teacher_id', user.id);
+        let classesQuery = supabase.from('classes').select('*');
+        if (userRole !== 'principal') {
+          classesQuery = classesQuery.eq('teacher_id', user.id);
+        }
+        const { data: classesData, error: classesError } = await classesQuery;
 
         if (classesError) throw classesError;
         setClasses(classesData || []);
@@ -180,13 +212,17 @@ const EnterNonScholasticMarks = () => {
       if (marksError) throw marksError;
 
       const marksMap = {};
+      const existingMap = {};
       existingMarks.forEach(m => {
-        marksMap[m.student_id] = {
-            grade: m.grade,
-            numeric_value: m.numeric_value
+        const value = {
+          grade: m.grade,
+          numeric_value: m.numeric_value
         };
+        marksMap[m.student_id] = value;
+        existingMap[m.student_id] = value;
       });
       setMarks(marksMap);
+      setExistingMarks(existingMap);
 
       setViewMode('view');
 
@@ -213,26 +249,7 @@ const EnterNonScholasticMarks = () => {
       if (!examTypeId && examTypes.length > 0) examTypeId = examTypes[0].id;
       
       if (!examTypeId) throw new Error('System Configuration Error: No Exam Type found.');
-        // 1. Fetch Teacher UUID
-      let teacherId = null;
-      const { data: teacherByClerk } = await supabase
-        .from('teachers')
-        .select('id')
-        .eq('clerk_user_id', user.id)
-        .maybeSingle();
-
-      if (teacherByClerk) {
-        teacherId = teacherByClerk.id;
-      } else {
-        const { data: teacherByEmail } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('email', user.primaryEmailAddress.emailAddress)
-          .maybeSingle();
-        if (teacherByEmail) teacherId = teacherByEmail.id;
-      }
-
-      if (!teacherId) throw new Error('Teacher record not found.');
+      const teacherId = await resolveMarkerTeacherId();
 
       // 2. Prepare Data
       const marksToUpsert = Object.entries(marks).map(([studentId, data]) => {
@@ -265,6 +282,54 @@ const EnterNonScholasticMarks = () => {
               });
             if (upsertError) throw upsertError;
         }
+
+      const selectedClassDataForName = classes.find(c => c.id === selectedClass);
+      const classLabel = selectedClassDataForName ? `${selectedClassDataForName.name}${selectedClassDataForName.session ? ' - ' + selectedClassDataForName.session : ''}` : selectedClass;
+      const activityData = activities.find(a => a.id === parseInt(selectedActivity, 10)) || currentActivityData;
+      const activityName = activityData ? activityData.activity_name : String(selectedActivity);
+      const categoryData = categories.find(cat => cat.id === activityData?.category_id);
+      const categoryName = categoryData ? categoryData.category_name : '';
+
+      const perStudentLogPromises = marksToUpsert.map(entry => {
+        const studentId = entry.student_id;
+        const student = students.find(s => s.id === studentId);
+        const oldRow = existingMarks[studentId] || null;
+        const isNumeric = currentActivityData.is_numeric;
+        const oldValue = oldRow ? (isNumeric ? oldRow.numeric_value : oldRow.grade) : null;
+        const newValue = isNumeric ? entry.numeric_value : entry.grade;
+
+        if (oldRow && oldValue === newValue) {
+          return null;
+        }
+
+        const studentLabel = student ? `${student.name || student.student_name || ''}` : studentId;
+        const roll = student?.roll_number || '-';
+        const scholar = student?.scholar_number || '-';
+
+        const oldText = oldValue === null || oldValue === undefined ? 'none' : String(oldValue);
+        const newText = newValue === null || newValue === undefined ? 'none' : String(newValue);
+
+        const prefix = categoryName ? `${categoryName} - ${activityName}` : activityName;
+        const description = `Non-scholastic marks for ${studentLabel} (Roll ${roll}, Scholar ${scholar}) in ${prefix} (${academicYear}) in ${classLabel}: ${oldText} -> ${newText}`;
+
+        return logTeacherAction(user, {
+          action: oldRow ? 'NON_SCHOLASTIC_MARK_CHANGED' : 'NON_SCHOLASTIC_MARK_CREATED',
+          entityType: 'non_scholastic',
+          entityId: studentId,
+          description
+        });
+      }).filter(p => p !== null);
+
+      if (perStudentLogPromises.length > 0) {
+        await Promise.all(perStudentLogPromises);
+      }
+
+      await logTeacherAction(user, {
+        action: 'NON_SCHOLASTIC_MARKS_SAVED',
+        entityType: 'non_scholastic',
+        entityId: selectedActivity,
+        description: `Saved non-scholastic marks for ${classLabel}, activity ${activityName}, exam type ${examTypeId}, year ${academicYear}`
+      });
 
       setMessage({ type: 'success', text: 'Marks saved successfully!' });
       setViewMode('view');
@@ -457,6 +522,42 @@ const EnterNonScholasticMarks = () => {
     }
   };
 
+  const applyNonScholasticExcelUpload = async () => {
+    if (!excelPreviewEntries || excelPreviewEntries.length === 0) return;
+    setExcelUploading(true);
+    try {
+      const teacherId = await resolveMarkerTeacherId();
+      const payload = excelPreviewEntries.map(r => ({
+        student_id: r.student_id,
+        activity_id: (activities.find(a => a.activity_name === r.activity_name)?.id) || null,
+        academic_year: (classes.find(c => c.id === selectedClass)?.session) || '2024-2025',
+        exam_type_id: (examTypes.find(et => et.exam_name.toLowerCase().includes('annual') || et.exam_name.toLowerCase().includes('final'))?.id) || (examTypes[examTypes.length - 1]?.id) || (examTypes[0]?.id),
+        grade: r.is_numeric ? null : r.grade,
+        numeric_value: r.is_numeric ? r.numeric_value : null,
+        marked_by: teacherId
+      })).filter(p => p.activity_id);
+      const { error: upsertError } = await supabase
+        .from('student_non_scholastic')
+        .upsert(payload, { onConflict: 'student_id, activity_id, academic_year, exam_type_id' });
+      if (upsertError) throw upsertError;
+      await logTeacherAction(user, {
+        action: 'NON_SCHOLASTIC_MARKS_IMPORTED_EXCEL',
+        entityType: 'non_scholastic',
+        entityId: selectedClass,
+        description: `Imported non-scholastic marks from Excel for ${excelPreviewSummary.studentCount} students and ${excelPreviewSummary.activityCount} activities in ${excelPreviewSummary.classLabel}, exam type ${excelPreviewSummary.examTypeId}, year ${excelPreviewSummary.academicYear}`
+      });
+      setMessage({ type: 'success', text: 'Non-scholastic marks uploaded successfully from Excel.' });
+      setExcelPreviewOpen(false);
+      setExcelPreviewEntries([]);
+      setExcelPreviewSummary(null);
+    } catch (error) {
+      console.error('Error applying non-scholastic Excel upload:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to apply Excel upload.' });
+    } finally {
+      setExcelUploading(false);
+    }
+  };
+
   const handleExcelUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -588,7 +689,7 @@ const EnterNonScholasticMarks = () => {
 
         const { data: studentsData, error: studentsError } = await supabase
           .from('students')
-          .select('id, scholar_number')
+          .select('id, scholar_number, roll_number, name, student_name')
           .eq('class_id', selectedClass);
 
         if (studentsError) {
@@ -618,32 +719,10 @@ const EnterNonScholasticMarks = () => {
           throw new Error('No Exam Types defined in system. Please contact admin.');
         }
 
-        let teacherId = null;
-        const { data: teacherByClerk } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('clerk_user_id', user.id)
-          .maybeSingle();
-
-        if (teacherByClerk) {
-          teacherId = teacherByClerk.id;
-        } else {
-          const { data: teacherByEmail } = await supabase
-            .from('teachers')
-            .select('id')
-            .eq('email', user.primaryEmailAddress.emailAddress)
-            .maybeSingle();
-
-          if (teacherByEmail) {
-            teacherId = teacherByEmail.id;
-          }
-        }
-
-        if (!teacherId) {
-          throw new Error('Teacher record not found. Please contact administrator.');
-        }
+        const teacherId = await resolveMarkerTeacherId();
 
         const marksToUpsert = [];
+        const previewRows = [];
 
         jsonData.forEach((row, index) => {
           const scholarRaw = row['Scholar No'] ?? row['Scholar Number'] ?? '';
@@ -677,6 +756,18 @@ const EnterNonScholasticMarks = () => {
                 numeric_value: num,
                 marked_by: teacherId
               });
+              const sd = studentsData.find(s => s.id === studentId) || {};
+              previewRows.push({
+                student_id: studentId,
+                roll_number: sd.roll_number || '-',
+                scholar_number: sd.scholar_number || '-',
+                student_name: sd.name || sd.student_name || '',
+                activity_name: meta.activityName,
+                category_name: meta.categoryName,
+                is_numeric: true,
+                numeric_value: num,
+                grade: null
+              });
             } else {
               const gradeRaw = String(cellRaw).trim().toUpperCase();
               const validGrades = ['A+', 'A', 'B', 'C', 'D'];
@@ -692,6 +783,18 @@ const EnterNonScholasticMarks = () => {
                 numeric_value: null,
                 marked_by: teacherId
               });
+              const sd = studentsData.find(s => s.id === studentId) || {};
+              previewRows.push({
+                student_id: studentId,
+                roll_number: sd.roll_number || '-',
+                scholar_number: sd.scholar_number || '-',
+                student_name: sd.name || sd.student_name || '',
+                activity_name: meta.activityName,
+                category_name: meta.categoryName,
+                is_numeric: false,
+                numeric_value: null,
+                grade: gradeRaw
+              });
             }
           });
         });
@@ -702,25 +805,16 @@ const EnterNonScholasticMarks = () => {
 
         const uniqueStudentCount = new Set(marksToUpsert.map(m => m.student_id)).size;
         const uniqueActivityCount = new Set(marksToUpsert.map(m => m.activity_id)).size;
-        const confirmMessage = `You are about to upload non-scholastic marks for ${uniqueStudentCount} students and ${uniqueActivityCount} activities (${marksToUpsert.length} entries). Do you want to continue?`;
-        const confirmed = window.confirm(confirmMessage);
-
-        if (!confirmed) {
-          setMessage({ type: 'error', text: 'Non-scholastic marks upload cancelled.' });
-          return;
-        }
-
-        const { error: upsertError } = await supabase
-          .from('student_non_scholastic')
-          .upsert(marksToUpsert, {
-            onConflict: 'student_id, activity_id, academic_year, exam_type_id'
-          });
-
-        if (upsertError) {
-          throw upsertError;
-        }
-
-        setMessage({ type: 'success', text: 'Non-scholastic marks uploaded successfully from Excel.' });
+        setExcelPreviewEntries(previewRows);
+        setExcelPreviewSummary({
+          studentCount: uniqueStudentCount,
+          activityCount: uniqueActivityCount,
+          entryCount: marksToUpsert.length,
+          classLabel: selectedClassData.name + (selectedClassData.session ? ` - ${selectedClassData.session}` : ''),
+          academicYear,
+          examTypeId
+        });
+        setExcelPreviewOpen(true);
       } catch (error) {
         console.error('Error processing non-scholastic Excel file:', error);
         setMessage({ type: 'error', text: error.message || 'Failed to process Excel file.' });
@@ -843,6 +937,85 @@ const EnterNonScholasticMarks = () => {
             />
           </label>
         </div>
+        {excelPreviewOpen && (
+          <div className="mt-6 space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-blue-800">
+                  Preview: {excelPreviewSummary.entryCount} entry(ies) ready to import
+                </h4>
+                <button
+                  onClick={() => { setExcelPreviewOpen(false); setExcelPreviewEntries([]); setExcelPreviewSummary(null); }}
+                  className="px-3 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="overflow-x-auto max-h-64 overflow-y-auto mt-2">
+                {(() => {
+                  const activityKeys = Array.from(
+                    new Set(
+                      excelPreviewEntries.map(e => `${e.category_name || ''} - ${e.activity_name}`)
+                    )
+                  ).filter(Boolean);
+                  const students = Array.from(
+                    new Map(
+                      excelPreviewEntries.map(e => [
+                        e.scholar_number,
+                        { roll: e.roll_number, scholar: e.scholar_number, name: e.student_name }
+                      ])
+                    ).values()
+                  );
+                  return (
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-blue-100">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Roll</th>
+                          <th className="px-2 py-1 text-left">Scholar No</th>
+                          <th className="px-2 py-1 text-left">Student</th>
+                          {activityKeys.map((ak) => (
+                            <th key={ak} className="px-2 py-1 text-left">{ak}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {students.map((s) => (
+                          <tr key={s.scholar}>
+                            <td className="px-2 py-1">{s.roll || '-'}</td>
+                            <td className="px-2 py-1">{s.scholar || '-'}</td>
+                            <td className="px-2 py-1">{s.name || '-'}</td>
+                            {activityKeys.map((ak) => {
+                              const entry = excelPreviewEntries.find(e => e.scholar_number === s.scholar && `${e.category_name || ''} - ${e.activity_name}` === ak);
+                              const val = entry ? (entry.is_numeric ? (entry.numeric_value ?? '-') : (entry.grade ?? '-')) : '-';
+                              return <td key={ak} className="px-2 py-1">{val}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()}
+              </div>
+            </div>
+            <button
+              onClick={applyNonScholasticExcelUpload}
+              disabled={excelUploading}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md"
+            >
+              {excelUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Importing...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  <span>Import {excelPreviewSummary.entryCount} Entry(ies)</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Entry Area */}

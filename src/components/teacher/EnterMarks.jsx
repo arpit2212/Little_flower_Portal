@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
-import { BookOpen, Save, Search, AlertCircle, CheckCircle } from 'lucide-react';
+import { BookOpen, Save, Search, AlertCircle, CheckCircle, Check } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { logTeacherAction } from '../../lib/teacherLog';
 
 const EnterMarks = () => {
   const { user } = useUser();
+  const userRole = user?.publicMetadata?.role;
   const [loading, setLoading] = useState(false);
   const [classes, setClasses] = useState([]);
   const [examTypes, setExamTypes] = useState([]);
@@ -20,9 +22,39 @@ const EnterMarks = () => {
   const [absentStatus, setAbsentStatus] = useState({}); // { student_id: boolean }
   const [maxMarks, setMaxMarks] = useState('');
   const [examConfig, setExamConfig] = useState(null);
+  const [existingMarks, setExistingMarks] = useState({});
   
   const [viewMode, setViewMode] = useState('initial'); // initial, view, edit
   const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: string }
+  const [excelPreviewOpen, setExcelPreviewOpen] = useState(false);
+  const [excelPreviewEntries, setExcelPreviewEntries] = useState([]);
+  const [excelPreviewSummary, setExcelPreviewSummary] = useState(null);
+  const [excelUploading, setExcelUploading] = useState(false);
+
+  const resolveMarkerTeacherId = async () => {
+    const { data: byClerk } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('clerk_user_id', user.id)
+      .maybeSingle();
+    if (byClerk?.id) return byClerk.id;
+    const { data: byEmail } = await supabase
+      .from('teachers')
+      .select('id')
+      .eq('email', user.primaryEmailAddress?.emailAddress || '')
+      .maybeSingle();
+    if (byEmail?.id) return byEmail.id;
+    const { data: inserted } = await supabase
+      .from('teachers')
+      .insert([{
+        clerk_user_id: user.id,
+        name: user.fullName || user.firstName || 'User',
+        email: user.primaryEmailAddress?.emailAddress || ''
+      }])
+      .select('id')
+      .single();
+    return inserted.id;
+  };
 
   // Fetch initial data (Classes and Exam Types)
   useEffect(() => {
@@ -30,12 +62,11 @@ const EnterMarks = () => {
       if (!user) return;
       setLoading(true);
       try {
-        // Fetch classes assigned to teacher directly using Clerk user ID
-        // This matches the logic in StudentManagement.jsx
-        const { data: classesData, error: classesError } = await supabase
-          .from('classes')
-          .select('*')
-          .eq('teacher_id', user.id);
+        let classesQuery = supabase.from('classes').select('*');
+        if (userRole !== 'principal') {
+          classesQuery = classesQuery.eq('teacher_id', user.id);
+        }
+        const { data: classesData, error: classesError } = await classesQuery;
 
         if (classesError) throw classesError;
         setClasses(classesData || []);
@@ -160,7 +191,6 @@ const EnterMarks = () => {
 
       if (configData) {
         setMaxMarks(configData.max_marks);
-        // 3. Fetch Existing Marks
         const { data: marksData, error: marksError } = await supabase
           .from('student_marks')
           .select('*')
@@ -170,16 +200,23 @@ const EnterMarks = () => {
 
         const marksMap = {};
         const absentMap = {};
+        const existingMap = {};
         marksData.forEach(m => {
           marksMap[m.student_id] = m.marks_obtained;
           absentMap[m.student_id] = m.is_absent;
+          existingMap[m.student_id] = {
+            marks_obtained: m.marks_obtained,
+            is_absent: m.is_absent
+          };
         });
         setMarks(marksMap);
         setAbsentStatus(absentMap);
+        setExistingMarks(existingMap);
       } else {
         setMaxMarks('');
         setMarks({});
         setAbsentStatus({});
+        setExistingMarks({});
       }
 
       setViewMode('view');
@@ -234,37 +271,8 @@ const EnterMarks = () => {
         }
       }
 
-      // 1.5. Fetch Teacher UUID (needed for marked_by foreign key)
-      // The classes table uses Clerk ID (user.id), but student_marks uses Teacher UUID (from teachers table)
-      let teacherId = null;
-      
-      // Try fetching by clerk_user_id first
-      const { data: teacherByClerk, error: teacherClerkError } = await supabase
-        .from('teachers')
-        .select('id')
-        .eq('clerk_user_id', user.id)
-        .maybeSingle();
+      const teacherId = await resolveMarkerTeacherId();
 
-      if (teacherByClerk) {
-        teacherId = teacherByClerk.id;
-      } else {
-        // Fallback to email if clerk_user_id is not set
-        const { data: teacherByEmail, error: teacherEmailError } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('email', user.primaryEmailAddress.emailAddress)
-          .maybeSingle();
-          
-        if (teacherByEmail) {
-          teacherId = teacherByEmail.id;
-        }
-      }
-
-      if (!teacherId) {
-        throw new Error('Teacher record not found. Please contact administrator.');
-      }
-
-      // 2. Upsert Marks
       const marksToUpsert = Object.entries(marks).map(([studentId, marksObtained]) => {
           const isAbsent = absentStatus[studentId] || false;
           
@@ -281,11 +289,8 @@ const EnterMarks = () => {
           };
       }).filter(m => m !== null);
       
-      // Also handle cases where a student is marked absent but has no entry in 'marks' state yet
-      // This happens if you just click absent without typing anything in marks input
       Object.entries(absentStatus).forEach(([studentId, isAbsent]) => {
           if (isAbsent && !marks[studentId]) {
-             // Check if already added
              const exists = marksToUpsert.find(m => m.student_id === studentId);
              if (!exists) {
                  marksToUpsert.push({
@@ -306,6 +311,53 @@ const EnterMarks = () => {
           
           if (upsertError) throw upsertError;
       }
+
+      const selectedClassDataForName = classes.find(c => c.id === selectedClass);
+      const classLabel = selectedClassDataForName ? `${selectedClassDataForName.name}${selectedClassDataForName.session ? ' - ' + selectedClassDataForName.session : ''}` : selectedClass;
+      const subjectData = subjects.find(s => s.id === selectedSubject || s.id === Number(selectedSubject));
+      const subjectName = subjectData ? subjectData.subject_name : String(selectedSubject);
+      const examTypeData = examTypes.find(e => e.id === selectedExamType || e.id === Number(selectedExamType));
+      const examName = examTypeData ? examTypeData.exam_name : String(selectedExamType);
+
+      const perStudentLogPromises = marksToUpsert.map(entry => {
+        const student = students.find(s => s.id === entry.student_id);
+        const oldRow = existingMarks[entry.student_id] || null;
+        const oldMarks = oldRow ? oldRow.marks_obtained : null;
+        const oldAbsent = oldRow ? oldRow.is_absent : false;
+        const newMarks = entry.marks_obtained;
+        const newAbsent = entry.is_absent;
+
+        if (oldRow && oldMarks === newMarks && oldAbsent === newAbsent) {
+          return null;
+        }
+
+        const studentLabel = student ? `${student.name || student.student_name || ''}` : entry.student_id;
+        const roll = student?.roll_number || '-';
+        const scholar = student?.scholar_number || '-';
+
+        const oldText = oldAbsent ? 'AB' : (oldMarks ?? 'none');
+        const newText = newAbsent ? 'AB' : (newMarks ?? 'none');
+
+        const description = `Scholastic marks for ${studentLabel} (Roll ${roll}, Scholar ${scholar}) in ${subjectName} (${examName}, ${academicYear}) in ${classLabel}: ${oldText} -> ${newText}`;
+
+        return logTeacherAction(user, {
+          action: oldRow ? 'SCHOLASTIC_MARK_CHANGED' : 'SCHOLASTIC_MARK_CREATED',
+          entityType: 'marks',
+          entityId: entry.student_id,
+          description
+        });
+      }).filter(p => p !== null);
+
+      if (perStudentLogPromises.length > 0) {
+        await Promise.all(perStudentLogPromises);
+      }
+
+      await logTeacherAction(user, {
+        action: 'SCHOLASTIC_MARKS_SAVED',
+        entityType: 'marks',
+        entityId: configId,
+        description: `Saved scholastic marks for ${classLabel}, subject ${subjectName}, exam type ${examName}, year ${academicYear}`
+      });
 
       setMessage({ type: 'success', text: 'Marks saved successfully!' });
       setViewMode('view');
@@ -475,7 +527,7 @@ const EnterMarks = () => {
               const markRow = marksByStudentAndConfig.get(key);
 
               if (markRow) {
-                row[obtainHeader] = markRow.is_absent ? 'AB' : (markRow.marks_obtained ?? '');
+                row[obtainHeader] = markRow.is_absent ? 'Absent' : (markRow.marks_obtained ?? '');
               } else {
                 row[obtainHeader] = '';
               }
@@ -591,10 +643,16 @@ const EnterMarks = () => {
             subjectId: subj.id
           };
         });
+        const activeSubjectRecords = subjectRecords.filter(sr => {
+          return jsonData.some(row => {
+            const val = row[sr.obtainKey];
+            return val !== undefined && val !== null && String(val).trim() !== '';
+          });
+        });
 
         const { data: studentsData, error: studentsError } = await supabase
           .from('students')
-          .select('id, scholar_number')
+          .select('id, scholar_number, roll_number, name, student_name')
           .eq('class_id', selectedClass);
 
         if (studentsError) {
@@ -612,7 +670,7 @@ const EnterMarks = () => {
           throw new Error('No students found for selected class.');
         }
 
-        const subjectIds = subjectRecords.map(sr => sr.subjectId);
+        const subjectIds = activeSubjectRecords.map(sr => sr.subjectId);
 
         const { data: existingConfigs, error: configError } = await supabase
           .from('exam_configurations')
@@ -634,7 +692,7 @@ const EnterMarks = () => {
         const configsToCreate = [];
         const subjectMaxMap = new Map();
 
-        subjectRecords.forEach(sr => {
+        activeSubjectRecords.forEach(sr => {
           const existingCfg = configBySubjectId.get(sr.subjectId);
           if (existingCfg) {
             subjectMaxMap.set(sr.subjectId, existingCfg.max_marks);
@@ -678,33 +736,10 @@ const EnterMarks = () => {
           });
         }
 
-        let teacherId = null;
-
-        const { data: teacherByClerk } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('clerk_user_id', user.id)
-          .maybeSingle();
-
-        if (teacherByClerk) {
-          teacherId = teacherByClerk.id;
-        } else {
-          const { data: teacherByEmail } = await supabase
-            .from('teachers')
-            .select('id')
-            .eq('email', user.primaryEmailAddress.emailAddress)
-            .maybeSingle();
-
-          if (teacherByEmail) {
-            teacherId = teacherByEmail.id;
-          }
-        }
-
-        if (!teacherId) {
-          throw new Error('Teacher record not found. Please contact administrator.');
-        }
+        const teacherId = await resolveMarkerTeacherId();
 
         const marksToUpsert = [];
+        const previewRows = [];
 
         jsonData.forEach((row, index) => {
           const scholarRaw = row['Scholar No'] ?? row['Scholar Number'] ?? '';
@@ -718,7 +753,7 @@ const EnterMarks = () => {
             return;
           }
 
-          subjectRecords.forEach(sr => {
+          activeSubjectRecords.forEach(sr => {
             const obtainRaw = row[sr.obtainKey];
             const maxRaw = row[sr.maxKey];
 
@@ -770,6 +805,18 @@ const EnterMarks = () => {
               is_absent: isAbsent,
               marked_by: teacherId
             });
+            const sd = studentsData.find(s => s.id === studentId) || {};
+            previewRows.push({
+              student_id: studentId,
+              roll_number: sd.roll_number || '-',
+              scholar_number: sd.scholar_number || '-',
+              student_name: sd.name || sd.student_name || '',
+              subject_name: sr.subjectName,
+              exam_configuration_id: cfg.id,
+              marks_obtained: isAbsent ? null : (marksValue != null ? marksValue : null),
+              is_absent: isAbsent,
+              max_marks: maxMarks || null
+            });
           });
         });
 
@@ -779,23 +826,16 @@ const EnterMarks = () => {
 
         const uniqueStudentCount = new Set(marksToUpsert.map(m => m.student_id)).size;
         const uniqueConfigCount = new Set(marksToUpsert.map(m => m.exam_configuration_id)).size;
-        const confirmMessage = `You are about to upload marks for ${uniqueStudentCount} students and ${uniqueConfigCount} subjects (${marksToUpsert.length} entries). Do you want to continue?`;
-        const confirmed = window.confirm(confirmMessage);
-
-        if (!confirmed) {
-          setMessage({ type: 'error', text: 'Marks upload cancelled.' });
-          return;
-        }
-
-        const { error: upsertError } = await supabase
-          .from('student_marks')
-          .upsert(marksToUpsert, { onConflict: 'student_id, exam_configuration_id' });
-
-        if (upsertError) {
-          throw upsertError;
-        }
-
-        setMessage({ type: 'success', text: 'Marks uploaded successfully from Excel.' });
+        setExcelPreviewEntries(previewRows);
+        setExcelPreviewSummary({
+          studentCount: uniqueStudentCount,
+          subjectCount: uniqueConfigCount,
+          entryCount: marksToUpsert.length,
+          classLabel: selectedClassData.name + (selectedClassData.session ? ` - ${selectedClassData.session}` : ''),
+          academicYear,
+          examTypeId: selectedExamType
+        });
+        setExcelPreviewOpen(true);
       } catch (error) {
         console.error('Error processing Excel file:', error);
         setMessage({ type: 'error', text: error.message || 'Failed to process Excel file.' });
@@ -806,6 +846,40 @@ const EnterMarks = () => {
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  const applyExcelUpload = async () => {
+    if (!excelPreviewEntries || excelPreviewEntries.length === 0) return;
+    setExcelUploading(true);
+    try {
+      const teacherId = await resolveMarkerTeacherId();
+      const payload = excelPreviewEntries.map(r => ({
+        student_id: r.student_id,
+        exam_configuration_id: r.exam_configuration_id,
+        marks_obtained: r.is_absent ? null : (r.marks_obtained != null ? r.marks_obtained : null),
+        is_absent: r.is_absent,
+        marked_by: teacherId
+      }));
+      const { error: upsertError } = await supabase
+        .from('student_marks')
+        .upsert(payload, { onConflict: 'student_id, exam_configuration_id' });
+      if (upsertError) throw upsertError;
+      await logTeacherAction(user, {
+        action: 'SCHOLASTIC_MARKS_IMPORTED_EXCEL',
+        entityType: 'marks',
+        entityId: selectedClass,
+        description: `Imported scholastic marks from Excel for ${excelPreviewSummary.studentCount} students and ${excelPreviewSummary.subjectCount} subjects in ${excelPreviewSummary.classLabel}, exam type ${excelPreviewSummary.examTypeId}, year ${excelPreviewSummary.academicYear}`
+      });
+      setMessage({ type: 'success', text: 'Marks uploaded successfully from Excel.' });
+      setExcelPreviewOpen(false);
+      setExcelPreviewEntries([]);
+      setExcelPreviewSummary(null);
+    } catch (error) {
+      console.error('Error applying Excel upload:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to apply Excel upload.' });
+    } finally {
+      setExcelUploading(false);
+    }
   };
 
   return (
@@ -916,6 +990,83 @@ const EnterMarks = () => {
             />
           </label>
         </div>
+        {excelPreviewOpen && (
+          <div className="mt-6 space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-blue-800">
+                  Preview: {excelPreviewSummary.entryCount} entry(ies) ready to import
+                </h4>
+                <button
+                  onClick={() => { setExcelPreviewOpen(false); setExcelPreviewEntries([]); setExcelPreviewSummary(null); }}
+                  className="px-3 py-1.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="overflow-x-auto max-h-64 overflow-y-auto mt-2">
+                {(() => {
+                  const subjectNames = Array.from(new Set(excelPreviewEntries.map(e => e.subject_name))).filter(Boolean);
+                  const students = Array.from(
+                    new Map(
+                      excelPreviewEntries.map(e => [
+                        e.scholar_number,
+                        { roll: e.roll_number, scholar: e.scholar_number, name: e.student_name }
+                      ])
+                    ).values()
+                  );
+                  return (
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-blue-100">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Roll</th>
+                          <th className="px-2 py-1 text-left">Scholar No</th>
+                          <th className="px-2 py-1 text-left">Student</th>
+                          {subjectNames.map((sn) => (
+                            <th key={sn} className="px-2 py-1 text-left">{sn}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {students.map((s) => (
+                          <tr key={s.scholar}>
+                            <td className="px-2 py-1">{s.roll || '-'}</td>
+                            <td className="px-2 py-1">{s.scholar || '-'}</td>
+                            <td className="px-2 py-1">{s.name || '-'}</td>
+                            {subjectNames.map((sn) => {
+                              const entry = excelPreviewEntries.find(e => e.scholar_number === s.scholar && e.subject_name === sn);
+                              const obt = entry ? (entry.is_absent ? 'Absent' : (entry.marks_obtained ?? '-')) : '-';
+                              const max = entry ? (entry.max_marks ?? '-') : '-';
+                              const val = `${obt} / ${max}`;
+                              return <td key={sn} className="px-2 py-1">{val}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
+                })()}
+              </div>
+            </div>
+            <button
+              onClick={applyExcelUpload}
+              disabled={excelUploading}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md"
+            >
+              {excelUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Importing...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  <span>Import {excelPreviewSummary.entryCount} Entry(ies)</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Marks Display / Entry Area */}

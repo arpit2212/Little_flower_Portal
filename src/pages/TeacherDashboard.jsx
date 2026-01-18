@@ -1,6 +1,6 @@
 
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, ClipboardCheck, FileText, Menu, X, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardCheck, FileText, Menu, X, BarChart2, Eye } from 'lucide-react';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import ProtectedRoute from '../components/common/ProtectedRoute';
@@ -11,6 +11,7 @@ import EnterMarks from '../components/teacher/EnterMarks';
 import EnterNonScholasticMarks from '../components/teacher/EnterNonScholasticMarks';
 import ViewResults from '../components/teacher/ViewResults';
 import AttendanceReport from '../components/common/AttendanceReport';
+import AttendanceViewer from '../components/common/AttendanceViewer';
 
 const TeacherDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -19,6 +20,7 @@ const TeacherDashboard = () => {
     { path: '', icon: LayoutDashboard, label: 'Dashboard' },
     { path: 'students', icon: Users, label: 'Manage Students' },
     { path: 'attendance', icon: ClipboardCheck, label: 'Mark Attendance' },
+    { path: 'view-attendance', icon: Eye, label: 'View Attendance' },
     { path: 'marks', icon: FileText, label: 'Enter Marks' },
     { path: 'non-scholastic-marks', icon: FileText, label: 'Non-Scholastic Marks' },
     { path: 'view-results', icon: BarChart2, label: 'View Results' },
@@ -85,6 +87,7 @@ const TeacherDashboard = () => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/students" element={<StudentManagement />} />
                 <Route path="/attendance" element={<AttendanceMarking />} />
+                <Route path="/view-attendance" element={<AttendanceViewer />} />
                 <Route path="/marks" element={<EnterMarks />} />
                 <Route path="/non-scholastic-marks" element={<EnterNonScholasticMarks />} />
                 <Route path="/view-results" element={<ViewResults />} />

@@ -1,6 +1,6 @@
 // PrincipalDashboard.jsx
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCog, FileText, Menu, X, GraduationCap, FileDown } from 'lucide-react';
+import { LayoutDashboard, Users, UserCog, FileText, Menu, X, GraduationCap, FileDown, ClipboardCheck, Eye } from 'lucide-react';
 import { useState } from 'react';
 import Navbar from '../components/layout/Navbar';
 import ProtectedRoute from '../components/common/ProtectedRoute';
@@ -10,7 +10,12 @@ import AssignTeacher from '../components/principal/AssignTeacher';
 import AttendanceReport from '../components/common/AttendanceReport';
 import ViewResults from '../components/principal/ViewResults';
 import GenerateMarksheet from '../components/principal/GenerateMarksheet';
-import StudentManagement from '../components/teacher/StudentManagement';
+import PrincipalClassStudents from '../components/principal/PrincipalClassStudents';
+import TeacherLogs from '../components/principal/TeacherLogs';
+import AttendanceMarking from '../components/teacher/AttendanceMarking';
+import EnterMarks from '../components/teacher/EnterMarks';
+import EnterNonScholasticMarks from '../components/teacher/EnterNonScholasticMarks';
+import AttendanceViewer from '../components/common/AttendanceViewer';
 
 const PrincipalDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -18,10 +23,15 @@ const PrincipalDashboard = () => {
   const navItems = [
     { path: '', icon: LayoutDashboard, label: 'Dashboard' },
     { path: 'classes', icon: Users, label: 'All Classes' },
+    { path: 'attendance', icon: ClipboardCheck, label: 'Mark Attendance' },
+    { path: 'view-attendance', icon: Eye, label: 'View Attendance' },
+    { path: 'marks', icon: FileText, label: 'Enter Marks' },
+    { path: 'non-scholastic-marks', icon: FileText, label: 'Non-Scholastic Marks' },
     { path: 'results', icon: GraduationCap, label: 'View Results' },
     { path: 'generate-marksheet', icon: FileDown, label: 'Generate Marksheet' },
     { path: 'assign-teacher', icon: UserCog, label: 'Assign Teachers' },
     { path: 'reports', icon: FileText, label: 'Reports' },
+    { path: 'teacher-log', icon: FileText, label: 'Teacher Logs' },
   ];
 
   return (
@@ -83,11 +93,16 @@ const PrincipalDashboard = () => {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/classes" element={<AllClassesView />} />
-                <Route path="/classes/:classId/students" element={<StudentManagement />} />
+                <Route path="/classes/:classId/students" element={<PrincipalClassStudents />} />
+                <Route path="/attendance" element={<AttendanceMarking />} />
+                <Route path="/view-attendance" element={<AttendanceViewer />} />
+                <Route path="/marks" element={<EnterMarks />} />
+                <Route path="/non-scholastic-marks" element={<EnterNonScholasticMarks />} />
                 <Route path="/results" element={<ViewResults />} />
                 <Route path="/generate-marksheet" element={<GenerateMarksheet />} />
                 <Route path="/assign-teacher" element={<AssignTeacher />} />
                 <Route path="/reports" element={<AttendanceReport role="principal" />} />
+                <Route path="/teacher-log" element={<TeacherLogs />} />
               </Routes>
             </div>
           </main>
