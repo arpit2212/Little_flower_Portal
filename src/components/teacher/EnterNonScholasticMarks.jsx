@@ -529,9 +529,9 @@ const EnterNonScholasticMarks = () => {
       const teacherId = await resolveMarkerTeacherId();
       const payload = excelPreviewEntries.map(r => ({
         student_id: r.student_id,
-        activity_id: (activities.find(a => a.activity_name === r.activity_name)?.id) || null,
-        academic_year: (classes.find(c => c.id === selectedClass)?.session) || '2024-2025',
-        exam_type_id: (examTypes.find(et => et.exam_name.toLowerCase().includes('annual') || et.exam_name.toLowerCase().includes('final'))?.id) || (examTypes[examTypes.length - 1]?.id) || (examTypes[0]?.id),
+        activity_id: r.activity_id,
+        academic_year: excelPreviewSummary?.academicYear || '2024-2025',
+        exam_type_id: excelPreviewSummary?.examTypeId,
         grade: r.is_numeric ? null : r.grade,
         numeric_value: r.is_numeric ? r.numeric_value : null,
         marked_by: teacherId
@@ -762,6 +762,7 @@ const EnterNonScholasticMarks = () => {
                 roll_number: sd.roll_number || '-',
                 scholar_number: sd.scholar_number || '-',
                 student_name: sd.name || sd.student_name || '',
+                activity_id: meta.activityId,
                 activity_name: meta.activityName,
                 category_name: meta.categoryName,
                 is_numeric: true,
@@ -789,6 +790,7 @@ const EnterNonScholasticMarks = () => {
                 roll_number: sd.roll_number || '-',
                 scholar_number: sd.scholar_number || '-',
                 student_name: sd.name || sd.student_name || '',
+                activity_id: meta.activityId,
                 activity_name: meta.activityName,
                 category_name: meta.categoryName,
                 is_numeric: false,
