@@ -150,18 +150,20 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
         * {
             box-sizing: border-box;
             -webkit-print-color-adjust: exact;
+             print-color-adjust: exact;
         }
         .page {
             width: 210mm;
             min-height: 297mm;
             padding: 0px;
-            background: white;
+            background:'#FDFFE4',
             font-family: 'Cambria', serif;
             color: black;
             margin: 0 auto;
             position: relative;
             font-size: 11pt;
             line-height: 1.15;
+            
         }
         
         /* New Section Wrappers */
@@ -347,7 +349,36 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
       `}} />
 
       <div className="page">
+
+        {/* Watermark */}
+<div
+  style={{
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    opacity: 0.1,
+    zIndex: 0,
+    pointerEvents: "none",
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  }}
+>
+  <img
+    src={schoolLogo}
+    alt="Watermark"
+    style={{
+      width: "550px",
+      height: "auto",
+    
+    
+    }}
+  />
+</div>
         {/* Main Section with Black Border */}
+        
         <div className="main-section" style={{  margin: '20px' }}>
             
             {/* Header Area */}

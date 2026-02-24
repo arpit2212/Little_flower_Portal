@@ -698,8 +698,15 @@ const GenerateMarksheet = () => {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-4 bg-gray-100 flex justify-center">
-              <div className="bg-white shadow-lg" style={{ width: '210mm', minHeight: '297mm' }}>
+            <div className="print-container flex-1 overflow-auto p-4 bg-gray-100 flex justify-center">
+     <div
+  className="shadow-lg"
+  style={{
+    width: '210mm',
+    minHeight: '297mm',
+    background:'#FDFFE4',
+  }}
+>
                 <MarksheetTemplate data={pdfData} ref={previewRef} />
               </div>
             </div>
