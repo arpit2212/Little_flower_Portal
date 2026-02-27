@@ -139,9 +139,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
       <style dangerouslySetInnerHTML={{ __html: `
         @page {
             size: A4;
-            margin: -2mm;
-            width : 210mm;
-            height : 300mm;
+            margin: 0;
         }
         @font-face {
             font-family: 'Cambria';
@@ -154,9 +152,9 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
         }
         .page {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             padding: 0px;
-            background:'#FDFFE4',
+            background: #FDFFE4;
             font-family: 'Cambria', serif;
             color: black;
             margin: 0 auto;
@@ -164,13 +162,14 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             font-size: 11pt;
             line-height: 1.15;
             
+            
         }
         
         /* New Section Wrappers */
         .main-section {
             border: 2px solid black;
             padding: 10px;
-            height: 100%;
+             height: 100%;
             position: relative;
             margin: 5px;
         }
@@ -370,7 +369,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
     src={schoolLogo}
     alt="Watermark"
     style={{
-      width: "550px",
+      width: "425px",
       height: "auto",
     
     

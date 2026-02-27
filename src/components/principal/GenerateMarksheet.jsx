@@ -108,7 +108,20 @@ const GenerateMarksheet = () => {
         <head>
           <title>${title}</title>
           <style>
-            body { margin: 0; padding: 0; }
+            @page {
+              margin: 0;
+              size: A4;
+            }
+            html, body { 
+              margin: 0; 
+              padding: 0; 
+              background: #FDFFE4 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              display: flex;
+              justify-content: center;
+              width: 100%;
+            }
           </style>
         </head>
         <body></body>
@@ -459,7 +472,24 @@ const GenerateMarksheet = () => {
           <head>
             <title>Class Marksheets</title>
             <style>
-              body { margin: 0; padding: 0; }
+              @page {
+                margin: 0;
+                size: A4;
+              }
+              html, body { 
+                margin: 0; 
+                padding: 0; 
+                background: #FDFFE4 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 100%;
+              }
+              .page-break {
+                page-break-after: always;
+              }
             </style>
           </head>
           <body></body>
@@ -483,6 +513,12 @@ const GenerateMarksheet = () => {
 
           const cloned = printWindow.document.importNode(element, true);
           printWindow.document.body.appendChild(cloned);
+
+          if (i < students.length - 1) {
+            const pageBreak = printWindow.document.createElement('div');
+            pageBreak.className = 'page-break';
+            printWindow.document.body.appendChild(pageBreak);
+          }
         } catch (studentError) {
           console.error('Error generating marksheet for student:', student.id, studentError);
         }
