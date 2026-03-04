@@ -154,7 +154,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
             width: 210mm;
             height: 297mm;
             padding: 0px;
-            background: #FDFFE4;
+            background: #FFFFFF;
             font-family: 'Cambria', serif;
             color: black;
             margin: 0 auto;
@@ -369,7 +369,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
     src={schoolLogo}
     alt="Watermark"
     style={{
-      width: "425px",
+      width: "460px",
       height: "auto",
     
     
@@ -810,7 +810,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                         <tr>
                             <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px', height: '30px'}}> <b>Division: {getDivisionFromTotals(totals)}</b></td>
                             <td colSpan="3" style={{fontSize: '15px', textAlign: 'left', paddingLeft: '5px'}}>
-                                Date of Issue: <b>13<sup>th</sup> March 2026</b>
+                                Date of Issue: <b>16<sup>th</sup> March 2026</b>
                             </td>
                         </tr>
                         <tr>

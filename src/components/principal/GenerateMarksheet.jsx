@@ -115,7 +115,7 @@ const GenerateMarksheet = () => {
             html, body { 
               margin: 0; 
               padding: 0; 
-              background: #FDFFE4 !important;
+              background: #FFFFFF !important;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
               display: flex;
@@ -479,7 +479,7 @@ const GenerateMarksheet = () => {
               html, body { 
                 margin: 0; 
                 padding: 0; 
-                background: #FDFFE4 !important;
+                background: #FFFFFF !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
                 display: flex;
@@ -740,7 +740,7 @@ const GenerateMarksheet = () => {
   style={{
     width: '210mm',
     minHeight: '297mm',
-    background:'#FDFFE4',
+    background:'white',
   }}
 >
                 <MarksheetTemplate data={pdfData} ref={previewRef} />
