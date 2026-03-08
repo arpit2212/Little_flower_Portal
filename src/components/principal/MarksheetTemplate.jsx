@@ -804,7 +804,7 @@ const MarksheetTemplate = forwardRef(({ data }, ref) => {
                                 Percentage of Attendance
                             </td>
                             <td style={{fontSize: '15px', width: '15%'}}>
-                                <b>{nonScholastic?.attendance?.percentage || ''}</b>
+                                <b>{nonScholastic?.attendance?.percentage || ''}%</b>
                             </td>
                         </tr>
                         <tr>
