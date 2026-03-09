@@ -277,14 +277,14 @@ const GenerateMarksheet = () => {
         const percentage = grandMax > 0 ? (grandObt / grandMax) * 100 : 0;
         let grade = '';
         if (grandMax > 0) {
-            if (percentage > 85) grade = 'A+';
-            else if (percentage >= 76) grade = 'A';
-            else if (percentage >= 66) grade = 'B+';
-            else if (percentage >= 56) grade = 'B';
-            else if (percentage >= 51) grade = 'C+';
-            else if (percentage >= 46) grade = 'C';
-            else if (percentage >= 33) grade = 'D';
-            else grade = 'F';
+            if (percentage > 85.4) grade = 'A+';
+            else if (percentage >= 75.4) grade = 'A';
+            else if (percentage >= 59.4) grade = 'B+';
+            else if (percentage >= 55.4) grade = 'B';
+            else if (percentage >= 50.4) grade = 'C+';
+            else if (percentage >= 45.4) grade = 'C';
+            else if (percentage >= 32.4) grade = 'D';
+            else grade = 'E';
         }
 
         return {
